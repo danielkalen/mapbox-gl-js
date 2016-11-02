@@ -1,5 +1,5 @@
 {
-  "name": "mapbox-gl",
+  "name": "@danielkalen/mapbox-gl",
   "description": "A WebGL interactive maps library",
   "version": "0.26.0",
   "main": "js/mapbox-gl.js",
@@ -109,6 +109,7 @@
     "start-bench": "run-p build-token watch-benchmarks watch-benchmarks-view start-server",
     "build-docs": "documentation build --github --format html --config documentation.yml --theme ./docs/_theme --output docs/api/",
     "build": "npm run build-docs # invoked by publisher when publishing docs on the mb-pages branch",
+    "build-final": "npm run build-dev && npm run build-min",
     "start-docs": "npm run build-min && npm run build-docs && jekyll serve --watch",
     "lint": "eslint  --ignore-path .gitignore js test bench docs/_posts/examples/*.html",
     "lint-docs": "documentation lint",
