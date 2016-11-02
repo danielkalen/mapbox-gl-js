@@ -152,16 +152,16 @@ class Marker {
 
 function genUpdateFn(target){
     return function(e){
-        if (target._map) {
-            requestAnimationFrame(function(){
+        requestAnimationFrame(function(){
+            if (target._map) {
                 var pos = target._map.project(target._lngLat)._add(target._offset);
                 // because rouding the coordinates at every `move` event causes stuttered zooming
                 // we only round them when _update is called with `moveend` or when its called with
                 // no arguments (when the Marker is initialized or Marker#setLngLat is invoked).
                 if (!e || e.type === "moveend") pos = pos.round();
                 DOM.setTransform(target._element, 'translate(' + pos.x + 'px,' + pos.y + 'px)');
-            });
-        }
+            }
+        });
     }
 }
 
