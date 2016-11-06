@@ -80,9 +80,9 @@ class Camera extends Evented {
      * @returns {Map} `this`
      * @see [Navigate the map with game-like controls](https://www.mapbox.com/mapbox-gl-js/example/game-controls/)
      */
-    panBy(offset, options, eventData) {
+    panBy(offset, options, eventData, callback) {
         this.panTo(this.transform.center,
-            util.extend({offset: Point.convert(offset).mult(-1)}, options), eventData);
+            util.extend({offset: Point.convert(offset).mult(-1)}, options), eventData, callback);
         return this;
     }
 
@@ -97,10 +97,10 @@ class Camera extends Evented {
      * @fires moveend
      * @returns {Map} `this`
      */
-    panTo(lnglat, options, eventData) {
+    panTo(lnglat, options, eventData, callback) {
         return this.easeTo(util.extend({
             center: lnglat
-        }, options), eventData);
+        }, options), eventData, callback);
     }
 
     /**
@@ -422,7 +422,7 @@ class Camera extends Evented {
      * @returns {Map} `this`
      * @see [Navigate the map with game-like controls](https://www.mapbox.com/mapbox-gl-js/example/game-controls/)
      */
-    easeTo(options, eventData) {
+    easeTo(options, eventData, callback) {
         this.stop();
 
         options = util.extend({
@@ -507,6 +507,7 @@ class Camera extends Evented {
             } else {
                 this._easeToEnd(eventData);
             }
+            if (typeof callback === 'function') callback();
         }, options);
 
         return this;
@@ -577,7 +578,7 @@ class Camera extends Evented {
      * @see [Slowly fly to a location](https://www.mapbox.com/mapbox-gl-js/example/flyto-options/)
      * @see [Fly to a location based on scroll position](https://www.mapbox.com/mapbox-gl-js/example/scroll-fly-to/)
      */
-    flyTo(options, eventData) {
+    flyTo(options, eventData, callback) {
         // This method implements an “optimal path” animation, as detailed in:
         //
         // Van Wijk, Jarke J.; Nuij, Wim A. A. “Smooth and efficient zooming and panning.” INFOVIS
@@ -732,6 +733,7 @@ class Camera extends Evented {
 
             this.fire('zoomend', eventData);
             this.fire('moveend', eventData);
+            if (typeof callback === 'function') callback();
         }, options);
 
         return this;
