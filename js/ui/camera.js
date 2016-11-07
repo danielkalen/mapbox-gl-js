@@ -148,7 +148,7 @@ class Camera extends Evented {
      * @fires zoomend
      * @returns {Map} `this`
      */
-    zoomTo(zoom, options, eventData) {
+    zoomTo(zoom, options, eventData, callback) {
         return this.easeTo(util.extend({
             zoom: zoom
         }, options), eventData, callback);
