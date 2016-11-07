@@ -151,7 +151,7 @@ class Camera extends Evented {
     zoomTo(zoom, options, eventData) {
         return this.easeTo(util.extend({
             zoom: zoom
-        }, options), eventData);
+        }, options), eventData, callback);
     }
 
     /**
@@ -230,10 +230,10 @@ class Camera extends Evented {
      * @fires moveend
      * @returns {Map} `this`
      */
-    rotateTo(bearing, options, eventData) {
+    rotateTo(bearing, options, eventData, callback) {
         return this.easeTo(util.extend({
             bearing: bearing
-        }, options), eventData);
+        }, options), eventData, callback);
     }
 
     /**
