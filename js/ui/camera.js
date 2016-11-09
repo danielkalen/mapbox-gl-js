@@ -40,6 +40,7 @@ class Camera extends Evented {
         super();
         this.transform = transform;
         this._bearingSnap = options.bearingSnap;
+        this.allowAnimationToEnd = false;
     }
 
     /**
@@ -750,7 +751,7 @@ class Camera extends Evented {
      * @returns {Map} `this`
      */
     stop() {
-        if (this._abortFn) {
+        if (this._abortFn && !this.allowAnimationToEnd) {
             this._abortFn();
             this._finishEase();
         }
