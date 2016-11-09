@@ -119,6 +119,7 @@ class TouchZoomRotateHandler {
 
             if (rotatingSignificantly) {
                 this._gestureIntent = 'rotate';
+                this._fireEvent('rotatestart', e);
             } else if (scalingSignificantly) {
                 this._gestureIntent = 'zoom';
             }
@@ -152,6 +153,7 @@ class TouchZoomRotateHandler {
     _onEnd(e) {
         window.document.removeEventListener('touchmove', this._onMove);
         window.document.removeEventListener('touchend', this._onEnd);
+        this._fireEvent('rotateend', e);
         this._drainInertiaBuffer();
 
         const inertia = this._inertia,
@@ -207,6 +209,10 @@ class TouchZoomRotateHandler {
             cutoff = 160; // msec
 
         while (inertia.length > 2 && now - inertia[0][0] > cutoff) inertia.shift();
+    }
+
+    _fireEvent(type, e) {
+        return this._map.fire(type, { originalEvent: e });
     }
 }
 
