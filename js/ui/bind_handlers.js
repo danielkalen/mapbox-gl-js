@@ -43,7 +43,7 @@ module.exports = function bindHandlers(map, options) {
     }
 
     function onMouseDown(e) {
-        if (!this.allowAnimationToEnd) {
+        if (!map.allowAnimationToEnd) {
             map.stop();
             startPos = DOM.mousePos(el, e);
             fireMouseEvent('mousedown', e);
@@ -73,7 +73,7 @@ module.exports = function bindHandlers(map, options) {
     }
 
     function onTouchStart(e) {
-        if (!this.allowAnimationToEnd) {
+        if (!map.allowAnimationToEnd) {
             map.stop();
             fireTouchEvent('touchstart', e);
 
