@@ -43,9 +43,11 @@ module.exports = function bindHandlers(map, options) {
     }
 
     function onMouseDown(e) {
-        map.stop();
-        startPos = DOM.mousePos(el, e);
-        fireMouseEvent('mousedown', e);
+        if (!this.allowAnimationToEnd) {
+            map.stop();
+            startPos = DOM.mousePos(el, e);
+            fireMouseEvent('mousedown', e);
+        }
     }
 
     function onMouseUp(e) {
@@ -71,18 +73,20 @@ module.exports = function bindHandlers(map, options) {
     }
 
     function onTouchStart(e) {
-        map.stop();
-        fireTouchEvent('touchstart', e);
+        if (!this.allowAnimationToEnd) {
+            map.stop();
+            fireTouchEvent('touchstart', e);
 
-        if (!e.touches || e.touches.length > 1) return;
+            if (!e.touches || e.touches.length > 1) return;
 
-        if (!tapped) {
-            tapped = setTimeout(onTouchTimeout, 300);
+            if (!tapped) {
+                tapped = setTimeout(onTouchTimeout, 300);
 
-        } else {
-            clearTimeout(tapped);
-            tapped = null;
-            fireMouseEvent('dblclick', e);
+            } else {
+                clearTimeout(tapped);
+                tapped = null;
+                fireMouseEvent('dblclick', e);
+            }
         }
     }
 

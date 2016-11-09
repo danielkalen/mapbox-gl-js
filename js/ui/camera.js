@@ -751,7 +751,7 @@ class Camera extends Evented {
      * @returns {Map} `this`
      */
     stop() {
-        if (this._abortFn && !this.allowAnimationToEnd) {
+        if (this._abortFn) {
             this._abortFn();
             this._finishEase();
         }
@@ -774,7 +774,7 @@ class Camera extends Evented {
         // set a new _finishFn. Ensure we don't delete it unintentionally.
         const finish = this._finishFn;
         delete this._finishFn;
-        finish.call(this);
+        if (typeof finish === 'function') finish.call(this);
     }
 
     // convert bearing so that it's numerically close to the current one so that it interpolates properly
