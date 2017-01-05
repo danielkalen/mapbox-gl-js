@@ -56,27 +56,18 @@ function sameOrigin(url) {
 const transparentPngUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQYV2NgAAIAAAUAAarVyFEAAAAASUVORK5CYII=';
 
 exports.getImage = function(url, callback) {
+    // request the image with XHR to work around caching issues
+    // see https://github.com/mapbox/mapbox-gl-js/issues/1470
     return exports.getArrayBuffer(url, (err, imgData) => {
         if (err) return callback(err);
         const img = new window.Image();
-        img.onload = function() {
+        const URL = window.URL || window.webkitURL;
+        img.onload = () => {
             callback(null, img);
-            (window.URL || window.webkitURL).revokeObjectURL(img.src);
+            URL.revokeObjectURL(img.src);
         };
         const blob = new window.Blob([new Uint8Array(imgData)], { type: 'image/png' });
-        if (imgData.byteLength) {
-            img.src = (window.URL || window.webkitURL).createObjectURL(blob);
-        } else {
-            img.src = transparentPngUrl;
-        }
-        img.getData = function() {
-            const canvas = window.document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            context.drawImage(img, 0, 0);
-            return context.getImageData(0, 0, img.width, img.height).data;
-        };
+        img.src = imgData.byteLength ? URL.createObjectURL(blob) : transparentPngUrl;
     });
 };
 
@@ -93,6 +84,5 @@ exports.getVideo = function(urls, callback) {
         s.src = urls[i];
         video.appendChild(s);
     }
-    video.getData = function() { return video; };
     return video;
 };

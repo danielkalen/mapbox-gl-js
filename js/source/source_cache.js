@@ -27,10 +27,7 @@ class SourceCache extends Evented {
         this.id = id;
         this.dispatcher = dispatcher;
 
-        this._source = Source.create(id, options, dispatcher, this);
-
         this.on('source.load', function() {
-            if (this.map && this._source.onAdd) { this._source.onAdd(this.map); }
             this._sourceLoaded = true;
         });
 
@@ -42,10 +39,12 @@ class SourceCache extends Evented {
             if (this._sourceLoaded && event.dataType === 'source') {
                 this.reload();
                 if (this.transform) {
-                    this.update(this.transform, this.map && this.map.style.rasterFadeDuration);
+                    this.update(this.transform);
                 }
             }
         });
+
+        this._source = Source.create(id, options, dispatcher, this);
 
         this._tiles = {};
         this._cache = new Cache(0, this.unloadTile.bind(this));
@@ -57,6 +56,12 @@ class SourceCache extends Evented {
         this.map = map;
         if (this._source && this._source.onAdd) {
             this._source.onAdd(map);
+        }
+    }
+
+    onRemove(map) {
+        if (this._source && this._source.onRemove) {
+            this._source.onRemove(map);
         }
     }
 
@@ -151,7 +156,7 @@ class SourceCache extends Evented {
 
         tile.sourceCache = this;
         tile.timeAdded = new Date().getTime();
-        this._source.fire('data', {tile: tile, dataType: 'tile'});
+        this._source.fire('data', {tile: tile, coord: tile.coord, dataType: 'tile'});
 
         // HACK this is nescessary to fix https://github.com/mapbox/mapbox-gl-js/issues/2986
         if (this.map) this.map.painter.tileExtentVAO.vao = null;
@@ -249,9 +254,8 @@ class SourceCache extends Evented {
                 return tile;
             }
             if (this._cache.has(coord.id)) {
-                this.addTile(coord);
                 retain[coord.id] = true;
-                return this._tiles[coord.id];
+                return this._cache.get(coord.id);
             }
         }
     }
@@ -278,11 +282,12 @@ class SourceCache extends Evented {
      * are inside the viewport.
      * @private
      */
-    update(transform, fadeDuration) {
+    update(transform) {
         if (!this._sourceLoaded) { return; }
         let i;
         let coord;
         let tile;
+        let parentTile;
 
         this.updateCacheSize(transform);
 
@@ -295,7 +300,6 @@ class SourceCache extends Evented {
         // the most ideal tile for the current viewport. This may include tiles like
         // parent or child tiles that are *already* loaded.
         const retain = {};
-        const now = new Date().getTime();
 
         // Covered is a list of retained tiles who's areas are full covered by other,
         // better, retained tiles. They are not drawn separately.
@@ -328,7 +332,10 @@ class SourceCache extends Evented {
             // The tile we require is not yet loaded.
             // Retain child or parent tiles that cover the same area.
             if (!this.findLoadedChildren(coord, maxCoveringZoom, retain)) {
-                this.findLoadedParent(coord, minCoveringZoom, retain);
+                parentTile = this.findLoadedParent(coord, minCoveringZoom, retain);
+                if (parentTile) {
+                    this.addTile(parentTile.coord);
+                }
             }
         }
 
@@ -339,12 +346,15 @@ class SourceCache extends Evented {
             const id = ids[k];
             coord = TileCoord.fromID(id);
             tile = this._tiles[id];
-            if (tile && tile.timeAdded > now - (fadeDuration || 0)) {
+            if (tile && tile.fadeEndTime >= Date.now()) {
                 // This tile is still fading in. Find tiles to cross-fade with it.
                 if (this.findLoadedChildren(coord, maxCoveringZoom, retain)) {
                     retain[id] = true;
                 }
-                this.findLoadedParent(coord, minCoveringZoom, parentsForFading);
+                parentTile = this.findLoadedParent(coord, minCoveringZoom, parentsForFading);
+                if (parentTile) {
+                    this.addTile(parentTile.coord);
+                }
             }
         }
 
@@ -384,8 +394,8 @@ class SourceCache extends Evented {
 
         if (!tile) {
             tile = this._cache.get(wrapped.id);
-            if (tile && this._redoPlacement) {
-                this._redoPlacement(tile);
+            if (tile) {
+                tile.redoPlacement(this._source);
             }
         }
 
@@ -398,7 +408,7 @@ class SourceCache extends Evented {
 
         tile.uses++;
         this._tiles[coord.id] = tile;
-        this._source.fire('dataloading', {tile: tile, dataType: 'tile'});
+        this._source.fire('dataloading', {tile: tile, coord: tile.coord, dataType: 'tile'});
 
         return tile;
     }
@@ -416,7 +426,7 @@ class SourceCache extends Evented {
 
         tile.uses--;
         delete this._tiles[id];
-        this._source.fire('data', { tile: tile, dataType: 'tile' });
+        this._source.fire('data', { tile: tile, coord: tile.coord, dataType: 'tile' });
 
         if (tile.uses > 0)
             return;
@@ -513,7 +523,11 @@ class SourceCache extends Evented {
     }
 
     getVisibleCoordinates() {
-        return this.getRenderableIds().map(TileCoord.fromID);
+        const coords = this.getRenderableIds().map(TileCoord.fromID);
+        for (const coord of coords) {
+            coord.posMatrix = this.transform.calculatePosMatrix(coord, this._source.maxzoom);
+        }
+        return coords;
     }
 }
 

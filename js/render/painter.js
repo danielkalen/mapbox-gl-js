@@ -1,7 +1,7 @@
 'use strict';
 
 const browser = require('../util/browser');
-const mat4 = require('gl-matrix').mat4;
+const mat4 = require('@mapbox/gl-matrix').mat4;
 const FrameHistory = require('./frame_history');
 const SourceCache = require('../source/source_cache');
 const EXTENT = require('../data/extent');
@@ -12,6 +12,8 @@ const VertexArrayObject = require('./vertex_array_object');
 const RasterBoundsArray = require('../data/raster_bounds_array');
 const PosArray = require('../data/pos_array');
 const ProgramConfiguration = require('../data/program_configuration');
+const shaders = require('./shaders');
+const assert = require('assert');
 
 const draw = {
     symbol: require('./draw_symbol'),
@@ -49,11 +51,8 @@ class Painter {
 
         this.lineWidthRange = gl.getParameter(gl.ALIASED_LINE_WIDTH_RANGE);
 
-        this.basicFillProgramConfiguration = ProgramConfiguration.createStatic([
-            {name: 'u_color', components: 4},
-            {name: 'u_opacity', components: 1}
-        ]);
-        this.emptyProgramConfiguration = ProgramConfiguration.createStatic([]);
+        this.basicFillProgramConfiguration = ProgramConfiguration.createStatic(['color', 'opacity']);
+        this.emptyProgramConfiguration = new ProgramConfiguration();
     }
 
     /*
@@ -198,7 +197,7 @@ class Painter {
 
         this.glyphSource = style.glyphSource;
 
-        this.frameHistory.record(this.transform.zoom);
+        this.frameHistory.record(Date.now(), this.transform.zoom, style.getTransition().duration);
 
         this.prepareBuffers();
         this.clearColor();
@@ -208,53 +207,57 @@ class Painter {
 
         this.depthRange = (style._order.length + 2) * this.numSublayers * this.depthEpsilon;
 
-        this.renderPass({isOpaquePass: true});
-        this.renderPass({isOpaquePass: false});
+        this.isOpaquePass = true;
+        this.renderPass();
+        this.isOpaquePass = false;
+        this.renderPass();
+
+        if (this.options.showTileBoundaries) {
+            const sourceCache = this.style.sourceCaches[Object.keys(this.style.sourceCaches)[0]];
+            if (sourceCache) {
+                draw.debug(this, sourceCache, sourceCache.getVisibleCoordinates());
+            }
+        }
     }
 
-    renderPass(options) {
-        const groups = this.style._groups;
-        const isOpaquePass = options.isOpaquePass;
-        this.currentLayer = isOpaquePass ? this.style._order.length : -1;
+    renderPass() {
+        const layerIds = this.style._order;
 
-        for (let i = 0; i < groups.length; i++) {
-            const group = groups[isOpaquePass ? groups.length - 1 - i : i];
-            const sourceCache = this.style.sourceCaches[group.source];
+        let sourceCache, coords;
 
-            let j;
-            let coords = [];
-            if (sourceCache) {
-                coords = sourceCache.getVisibleCoordinates();
-                for (j = 0; j < coords.length; j++) {
-                    coords[j].posMatrix = this.transform.calculatePosMatrix(coords[j], sourceCache.getSource().maxzoom);
+        this.currentLayer = this.isOpaquePass ? layerIds.length - 1 : 0;
+
+        if (this.isOpaquePass) {
+            if (!this._showOverdrawInspector) {
+                this.gl.disable(this.gl.BLEND);
+            }
+        } else {
+            this.gl.enable(this.gl.BLEND);
+        }
+
+        for (let i = 0; i < layerIds.length; i++) {
+            const layer = this.style._layers[layerIds[this.currentLayer]];
+
+            if (layer.source !== (sourceCache && sourceCache.id)) {
+                sourceCache = this.style.sourceCaches[layer.source];
+                coords = [];
+
+                if (sourceCache) {
+                    if (sourceCache.prepare) sourceCache.prepare();
+                    this.clearStencil();
+                    coords = sourceCache.getVisibleCoordinates();
+                    if (sourceCache.getSource().isTileClipped) {
+                        this._renderTileClippingMasks(coords);
+                    }
                 }
-                this.clearStencil();
-                if (sourceCache.prepare) sourceCache.prepare();
-                if (sourceCache.getSource().isTileClipped) {
-                    this._renderTileClippingMasks(coords);
+
+                if (!this.isOpaquePass) {
+                    coords.reverse();
                 }
             }
 
-            if (isOpaquePass) {
-                if (!this._showOverdrawInspector) {
-                    this.gl.disable(this.gl.BLEND);
-                }
-                this.isOpaquePass = true;
-            } else {
-                this.gl.enable(this.gl.BLEND);
-                this.isOpaquePass = false;
-                coords.reverse();
-            }
-
-            for (j = 0; j < group.length; j++) {
-                const layer = group[isOpaquePass ? group.length - 1 - j : j];
-                this.currentLayer += isOpaquePass ? -1 : 1;
-                this.renderLayer(this, sourceCache, layer, coords);
-            }
-
-            if (sourceCache) {
-                draw.debug(this, sourceCache, coords);
-            }
+            this.renderLayer(this, sourceCache, layer, coords);
+            this.currentLayer += this.isOpaquePass ? -1 : 1;
         }
     }
 
@@ -359,23 +362,60 @@ class Painter {
         }
     }
 
-    _createProgramCached(name, paintAttributeSet) {
+    createProgram(name, configuration) {
+        const gl = this.gl;
+        const program = gl.createProgram();
+        const definition = shaders[name];
+
+        let definesSource = `#define MAPBOX_GL_JS\n#define DEVICE_PIXEL_RATIO ${browser.devicePixelRatio.toFixed(1)}\n`;
+        if (this._showOverdrawInspector) {
+            definesSource += '#define OVERDRAW_INSPECTOR;\n';
+        }
+
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, configuration.applyPragmas(definesSource + shaders.prelude.fragmentSource + definition.fragmentSource, 'fragment'));
+        gl.compileShader(fragmentShader);
+        assert(gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS), gl.getShaderInfoLog(fragmentShader));
+        gl.attachShader(program, fragmentShader);
+
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, configuration.applyPragmas(definesSource + shaders.prelude.vertexSource + definition.vertexSource, 'vertex'));
+        gl.compileShader(vertexShader);
+        assert(gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS), gl.getShaderInfoLog(vertexShader));
+        gl.attachShader(program, vertexShader);
+
+        gl.linkProgram(program);
+        assert(gl.getProgramParameter(program, gl.LINK_STATUS), gl.getProgramInfoLog(program));
+
+        const numAttributes = gl.getProgramParameter(program, gl.ACTIVE_ATTRIBUTES);
+        const result = {program, numAttributes};
+
+        for (let i = 0; i < numAttributes; i++) {
+            const attribute = gl.getActiveAttrib(program, i);
+            result[attribute.name] = gl.getAttribLocation(program, attribute.name);
+        }
+        const numUniforms = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+        for (let i = 0; i < numUniforms; i++) {
+            const uniform = gl.getActiveUniform(program, i);
+            result[uniform.name] = gl.getUniformLocation(program, uniform.name);
+        }
+        return result;
+    }
+
+    _createProgramCached(name, programConfiguration) {
         this.cache = this.cache || {};
-        const key = `${name}${paintAttributeSet.cacheKey}${!!this._showOverdrawInspector}`;
+        const key = `${name}${programConfiguration.cacheKey || ''}${this._showOverdrawInspector ? '/overdraw' : ''}`;
         if (!this.cache[key]) {
-            this.cache[key] = paintAttributeSet.createProgram(name, this._showOverdrawInspector, this.gl);
+            this.cache[key] = this.createProgram(name, programConfiguration);
         }
         return this.cache[key];
     }
 
-    useProgram(name, paintAttributeSet) {
+    useProgram(name, programConfiguration) {
         const gl = this.gl;
+        const nextProgram = this._createProgramCached(name, programConfiguration || this.emptyProgramConfiguration);
 
-        const nextProgram = this._createProgramCached(name,
-            paintAttributeSet || this.emptyProgramConfiguration);
-        const previousProgram = this.currentProgram;
-
-        if (previousProgram !== nextProgram) {
+        if (this.currentProgram !== nextProgram) {
             gl.useProgram(nextProgram.program);
             this.currentProgram = nextProgram;
         }

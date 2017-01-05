@@ -1,11 +1,8 @@
-/* eslint-disable */
 'use strict';
 
-var DOM = require('../util/dom');
-var util = require('../util/util');
-var LngLat = require('../geo/lng_lat');
-var Point = require('point-geometry');
-var Popup = require('./popup');
+const DOM = require('../util/dom');
+const LngLat = require('../geo/lng_lat');
+const Point = require('point-geometry');
 
 /**
  * Creates a marker component
@@ -105,8 +102,6 @@ class Marker {
      */
 
     setPopup(popup) {
-        var that = this;
-
         if (this._popup) {
             this._popup.remove();
             this._popup = null;
@@ -121,8 +116,8 @@ class Marker {
     }
 
     _onMapClick(event) {
-        var targetElement = event.originalEvent.target;
-        var element = this._element;
+        const targetElement = event.originalEvent.target;
+        const element = this._element;
 
         if (this._popup && (targetElement === element || element.contains(targetElement))) {
             this.togglePopup();
@@ -142,7 +137,7 @@ class Marker {
      * @returns {Marker} `this`
      */
     togglePopup() {
-        var popup = this._popup;
+        const popup = this._popup;
 
         if (!popup) return;
         else if (popup.isOpen()) popup.remove();
@@ -150,19 +145,19 @@ class Marker {
     }
 }
 
-function genUpdateFn(target){
-    return function(e){
-        requestAnimationFrame(function(){
+function genUpdateFn(target) {
+    return function(e) {
+        requestAnimationFrame(function() {
             if (target._map) {
-                var pos = target._map.project(target._lngLat)._add(target._offset);
+                let pos = target._map.project(target._lngLat)._add(target._offset);
                 // because rouding the coordinates at every `move` event causes stuttered zooming
                 // we only round them when _update is called with `moveend` or when its called with
                 // no arguments (when the Marker is initialized or Marker#setLngLat is invoked).
                 if (!e || e.type === "moveend") pos = pos.round();
-                DOM.setTransform(target._element, 'translate(' + pos.x + 'px,' + pos.y + 'px)');
+                DOM.setTransform(target._element, `translate(${pos.x}px, ${pos.y}px)`);
             }
         });
-    }
+    };
 }
 
 module.exports = Marker;

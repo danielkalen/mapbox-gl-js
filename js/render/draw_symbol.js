@@ -80,7 +80,9 @@ function drawLayerSymbols(painter, sourceCache, layer, coords, isText, translate
     const rotateWithMap = rotationAlignment === 'map';
     const pitchWithMap = pitchAlignment === 'map';
 
-    if (pitchWithMap) {
+    const depthOn = pitchWithMap;
+
+    if (depthOn) {
         gl.enable(gl.DEPTH_TEST);
     } else {
         gl.disable(gl.DEPTH_TEST);
@@ -93,7 +95,7 @@ function drawLayerSymbols(painter, sourceCache, layer, coords, isText, translate
         const bucket = tile.getBucket(layer);
         if (!bucket) continue;
         const buffers = isText ? bucket.buffers.glyph : bucket.buffers.icon;
-        if (!buffers.segments.length) continue;
+        if (!buffers || !buffers.segments.length) continue;
 
         const isSDF = isText || bucket.sdfIcons;
 
@@ -112,6 +114,8 @@ function drawLayerSymbols(painter, sourceCache, layer, coords, isText, translate
         drawTileSymbols(program, painter, layer, tile, buffers, isText, isSDF,
                 pitchWithMap, size, haloWidth, haloColor, haloBlur, color);
     }
+
+    if (!depthOn) gl.enable(gl.DEPTH_TEST);
 }
 
 function setSymbolDrawState(program, painter, isText, isSDF, rotateWithMap, pitchWithMap, fontstack, size,
@@ -169,12 +173,12 @@ function drawTileSymbols(program, painter, layer, tile, buffers, isText, isSDF,
         const s = pixelsToTileUnits(tile, fontScale, tr.zoom);
         gl.uniform2f(program.u_extrude_scale, s, s);
     } else {
-        const s = tr.altitude * fontScale;
+        const s = tr.cameraToCenterDistance * fontScale;
         gl.uniform2f(program.u_extrude_scale, tr.pixelsToGLUnits[0] * s, tr.pixelsToGLUnits[1] * s);
     }
 
     if (isSDF) {
-        const gammaScale = fontScale * (pitchWithMap ? Math.cos(tr._pitch) : 1);
+        const gammaScale = fontScale * (pitchWithMap ? Math.cos(tr._pitch) : 1) * tr.cameraToCenterDistance;
 
         if (haloWidth) { // Draw halo underneath the text.
             gl.uniform1f(program.u_gamma, (haloBlur * blurOffset / sdfPx + gamma) / gammaScale);

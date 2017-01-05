@@ -113,7 +113,7 @@ class DragPanHandler {
 
         this._pos = pos;
 
-        e.preventDefault();
+        // e.preventDefault();
     }
 
     _onUp(e) {

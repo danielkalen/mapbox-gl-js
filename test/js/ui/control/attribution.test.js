@@ -20,8 +20,7 @@ function createMap() {
 
 test('AttributionControl appears in bottom-right by default', (t) => {
     const map = createMap();
-    new AttributionControl()
-        .addTo(map);
+    map.addControl(new AttributionControl(), 'bottom-right');
 
     t.equal(map.getContainer().querySelectorAll('.mapboxgl-ctrl-bottom-right .mapboxgl-ctrl-attrib').length, 1);
     t.end();
@@ -29,16 +28,56 @@ test('AttributionControl appears in bottom-right by default', (t) => {
 
 test('AttributionControl appears in the position specified by the position option', (t) => {
     const map = createMap();
-    new AttributionControl({position: 'top-left'})
-        .addTo(map);
+    map.addControl(new AttributionControl(), 'top-left');
 
     t.equal(map.getContainer().querySelectorAll('.mapboxgl-ctrl-top-left .mapboxgl-ctrl-attrib').length, 1);
     t.end();
 });
 
+test('AttributionControl appears in compact mode if compact option is used', (t) => {
+    const map = createMap();
+    map.getCanvasContainer().offsetWidth = 700;
+
+    let attributionControl = new AttributionControl({
+        compact: true
+    });
+    map.addControl(attributionControl);
+
+    const container = map.getContainer();
+
+    t.equal(container.querySelectorAll('.mapboxgl-ctrl-attrib.compact').length, 1);
+    map.removeControl(attributionControl);
+
+    map.getCanvasContainer().offsetWidth = 600;
+    attributionControl = new AttributionControl({
+        compact: false
+    });
+
+    map.addControl(attributionControl);
+    t.equal(container.querySelectorAll('.mapboxgl-ctrl-attrib:not(.compact)').length, 1);
+    t.end();
+});
+
+test('AttributionControl appears in compact mode if container is less then 640 pixel wide', (t) => {
+    const map = createMap();
+    map.getCanvasContainer().offsetWidth = 700;
+    map.addControl(new AttributionControl());
+
+    const container = map.getContainer();
+
+    t.equal(container.querySelectorAll('.mapboxgl-ctrl-attrib:not(.compact)').length, 1);
+
+    map.getCanvasContainer().offsetWidth = 600;
+    map.resize();
+
+    t.equal(container.querySelectorAll('.mapboxgl-ctrl-attrib.compact').length, 1);
+    t.end();
+});
+
 test('AttributionControl dedupes attributions that are substrings of others', (t) => {
     const map = createMap();
-    const attribution = new AttributionControl({position: 'top-left'}).addTo(map);
+    const attribution = new AttributionControl();
+    map.addControl(attribution);
 
     map.on('load', () => {
         map.addSource('1', { type: 'vector', attribution: 'World' });
@@ -60,7 +99,8 @@ test('AttributionControl dedupes attributions that are substrings of others', (t
 
 test('AttributionControl has the correct edit map link', (t) => {
     const map = createMap();
-    const attribution = new AttributionControl({position: 'top-left'}).addTo(map);
+    const attribution = new AttributionControl();
+    map.addControl(attribution);
 
     map.on('load', () => {
         map.addSource('1', {type: 'vector', attribution: '<a class="mapbox-improve-map" href="https://www.mapbox.com/map-feedback/" target="_blank">Improve this map</a>'});

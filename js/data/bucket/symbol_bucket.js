@@ -15,35 +15,27 @@ const resolveText = require('../../symbol/resolve_text');
 const mergeLines = require('../../symbol/mergelines');
 const clipLine = require('../../symbol/clip_line');
 const util = require('../../util/util');
+const scriptDetection = require('../../util/script_detection');
 const loadGeometry = require('../load_geometry');
 const CollisionFeature = require('../../symbol/collision_feature');
 const findPoleOfInaccessibility = require('../../util/find_pole_of_inaccessibility');
 const classifyRings = require('../../util/classify_rings');
+const VectorTileFeature = require('vector-tile').VectorTileFeature;
 
 const shapeText = Shaping.shapeText;
 const shapeIcon = Shaping.shapeIcon;
+const WritingMode = Shaping.WritingMode;
 const getGlyphQuads = Quads.getGlyphQuads;
 const getIconQuads = Quads.getIconQuads;
 
 const elementArrayType = createElementArrayType();
 
-const layoutVertexArrayType = createVertexArrayType([{
-    name: 'a_pos',
-    components: 2,
-    type: 'Int16'
-}, {
-    name: 'a_offset',
-    components: 2,
-    type: 'Int16'
-}, {
-    name: 'a_texture_pos',
-    components: 2,
-    type: 'Uint16'
-}, {
-    name: 'a_data',
-    components: 4,
-    type: 'Uint8'
-}]);
+const layoutVertexArrayType = createVertexArrayType([
+    {name: 'a_pos',         components: 2, type: 'Int16'},
+    {name: 'a_offset',      components: 2, type: 'Int16'},
+    {name: 'a_texture_pos', components: 2, type: 'Uint16'},
+    {name: 'a_data',        components: 4, type: 'Uint8'}
+]);
 
 const symbolInterfaces = {
     glyph: {
@@ -55,19 +47,11 @@ const symbolInterfaces = {
         elementArrayType: elementArrayType
     },
     collisionBox: {
-        layoutVertexArrayType: createVertexArrayType([{
-            name: 'a_pos',
-            components: 2,
-            type: 'Int16'
-        }, {
-            name: 'a_extrude',
-            components: 2,
-            type: 'Int16'
-        }, {
-            name: 'a_data',
-            components: 2,
-            type: 'Uint8'
-        }]),
+        layoutVertexArrayType: createVertexArrayType([
+            {name: 'a_pos',     components: 2, type: 'Int16'},
+            {name: 'a_extrude', components: 2, type: 'Int16'},
+            {name: 'a_data',    components: 2, type: 'Uint8'}
+        ]),
         elementArrayType: createElementArrayType(2)
     }
 };
@@ -115,6 +99,7 @@ class SymbolBucket {
         this.zoom = options.zoom;
         this.overscaling = options.overscaling;
         this.layers = options.layers;
+        this.index = options.index;
         this.sdfIcons = options.sdfIcons;
         this.iconsNeedLinear = options.iconsNeedLinear;
         this.adjustedTextSize = options.adjustedTextSize;
@@ -122,9 +107,12 @@ class SymbolBucket {
         this.fontstack = options.fontstack;
 
         if (options.arrays) {
-            this.buffers = util.mapObject(options.arrays, (arrays, key) => {
-                return new BufferGroup(symbolInterfaces[key], options.layers, options.zoom, options.arrays[key]);
-            });
+            this.buffers = {};
+            for (const id in options.arrays) {
+                if (options.arrays[id]) {
+                    this.buffers[id] = new BufferGroup(symbolInterfaces[id], options.layers, options.zoom, options.arrays[id]);
+                }
+            }
         }
     }
 
@@ -147,7 +135,8 @@ class SymbolBucket {
         const stacks = options.glyphDependencies;
         const stack = stacks[textFont] = stacks[textFont] || {};
 
-        for (const feature of features) {
+        for (let i = 0; i < features.length; i++) {
+            const feature = features[i];
             if (!this.layers[0].filter(feature)) {
                 continue;
             }
@@ -169,10 +158,11 @@ class SymbolBucket {
             this.features.push({
                 text,
                 icon,
-                index: this.features.length,
+                index: i,
                 sourceLayerIndex: feature.sourceLayerIndex,
                 geometry: loadGeometry(feature),
-                properties: feature.properties
+                properties: feature.properties,
+                type: VectorTileFeature.types[feature.type]
             });
 
             if (icon) {
@@ -208,14 +198,17 @@ class SymbolBucket {
             adjustedTextSize: this.adjustedTextSize,
             adjustedIconSize: this.adjustedIconSize,
             fontstack: this.fontstack,
-            arrays: util.mapObject(this.arrays, (a) => a.serialize(transferables))
+            arrays: util.mapObject(this.arrays, (a) => a.isEmpty() ? null : a.serialize(transferables))
         };
     }
 
     destroy() {
-        this.buffers.icon.destroy();
-        this.buffers.glyph.destroy();
-        this.buffers.collisionBox.destroy();
+        if (this.buffers) {
+            if (this.buffers.icon) this.buffers.icon.destroy();
+            if (this.buffers.glyph) this.buffers.glyph.destroy();
+            if (this.buffers.collisionBox) this.buffers.collisionBox.destroy();
+            this.buffers = null;
+        }
     }
 
     createArrays() {
@@ -283,18 +276,27 @@ class SymbolBucket {
         const spacing = layout['text-letter-spacing'] * oneEm;
         const textOffset = [layout['text-offset'][0] * oneEm, layout['text-offset'][1] * oneEm];
         const fontstack = this.fontstack = layout['text-font'].join(',');
+        const textAlongLine = layout['text-rotation-alignment'] === 'map' && layout['symbol-placement'] === 'line';
 
         for (const feature of this.features) {
-            let shapedText;
+
+            let shapedTextOrientations;
             if (feature.text) {
-                shapedText = shapeText(feature.text, stacks[fontstack], maxWidth,
-                        lineHeight, horizontalAlign, verticalAlign, justify, spacing, textOffset);
+                const allowsVerticalWritingMode = scriptDetection.allowsVerticalWritingMode(feature.text);
+
+                shapedTextOrientations = {
+                    [WritingMode.horizontal]: shapeText(feature.text, stacks[fontstack], maxWidth, lineHeight, horizontalAlign, verticalAlign, justify, spacing, textOffset, oneEm, WritingMode.horizontal),
+                    [WritingMode.vertical]: allowsVerticalWritingMode && textAlongLine && shapeText(feature.text, stacks[fontstack], maxWidth, lineHeight, horizontalAlign, verticalAlign, justify, spacing, textOffset, oneEm, WritingMode.vertical)
+                };
+            } else {
+                shapedTextOrientations = {};
             }
 
             let shapedIcon;
             if (feature.icon) {
                 const image = icons[feature.icon];
-                shapedIcon = shapeIcon(image, layout);
+                const iconOffset = this.layers[0].getLayoutValue('icon-offset', {zoom: this.zoom}, feature.properties);
+                shapedIcon = shapeIcon(image, iconOffset);
 
                 if (image) {
                     if (this.sdfIcons === undefined) {
@@ -310,20 +312,17 @@ class SymbolBucket {
                 }
             }
 
-            if (shapedText || shapedIcon) {
-                this.addFeature(feature, shapedText, shapedIcon);
+            if (shapedTextOrientations[WritingMode.horizontal] || shapedIcon) {
+                this.addFeature(feature, shapedTextOrientations, shapedIcon);
             }
         }
         this.symbolInstancesEndIndex = this.symbolInstancesArray.length;
     }
 
-    addFeature(feature, shapedText, shapedIcon) {
-        const lines = feature.geometry;
-        const layout = this.layers[0].layout;
-
-        const glyphSize = 24;
-
-        const fontScale = this.adjustedTextSize / glyphSize,
+    addFeature(feature, shapedTextOrientations, shapedIcon) {
+        const layout = this.layers[0].layout,
+            glyphSize = 24,
+            fontScale = this.adjustedTextSize / glyphSize,
             textMaxSize = this.adjustedTextMaxSize !== undefined ? this.adjustedTextMaxSize : this.adjustedTextSize,
             textBoxScale = this.tilePixelRatio * fontScale,
             textMaxBoxScale = this.tilePixelRatio * textMaxSize / glyphSize,
@@ -338,92 +337,67 @@ class SymbolBucket {
             mayOverlap = layout['text-allow-overlap'] || layout['icon-allow-overlap'] ||
                 layout['text-ignore-placement'] || layout['icon-ignore-placement'],
             symbolPlacement = layout['symbol-placement'],
-            isLine = symbolPlacement === 'line',
             textRepeatDistance = symbolMinDistance / 2;
 
-        let list = null;
-        if (isLine) {
-            list = clipLine(lines, 0, 0, EXTENT, EXTENT);
-        } else {
-            // Only care about looping through the outer rings
-            list = classifyRings(lines, 0);
-        }
+        const addSymbolInstance = (line, anchor) => {
+            const inside = !(anchor.x < 0 || anchor.x > EXTENT || anchor.y < 0 || anchor.y > EXTENT);
 
-        for (let i = 0; i < list.length; i++) {
-            let anchors = null;
-            // At this point it is a list of points for a line or a list of polygon rings
-            const pointsOrRings = list[i];
-            let line = null;
+            if (avoidEdges && !inside) return;
 
-            // Calculate the anchor points around which you want to place labels
-            if (isLine) {
-                line = pointsOrRings;
-                anchors = getAnchors(
+            // Normally symbol layers are drawn across tile boundaries. Only symbols
+            // with their anchors within the tile boundaries are added to the buffers
+            // to prevent symbols from being drawn twice.
+            //
+            // Symbols in layers with overlap are sorted in the y direction so that
+            // symbols lower on the canvas are drawn on top of symbols near the top.
+            // To preserve this order across tile boundaries these symbols can't
+            // be drawn across tile boundaries. Instead they need to be included in
+            // the buffers for both tiles and clipped to tile boundaries at draw time.
+            const addToBuffers = inside || mayOverlap;
+            this.addSymbolInstance(anchor, line, shapedTextOrientations, shapedIcon, this.layers[0],
+                addToBuffers, this.symbolInstancesArray.length, this.collisionBoxArray, feature.index, feature.sourceLayerIndex, this.index,
+                textBoxScale, textPadding, textAlongLine,
+                iconBoxScale, iconPadding, iconAlongLine, {zoom: this.zoom}, feature.properties);
+        };
+
+        if (symbolPlacement === 'line') {
+            for (const line of clipLine(feature.geometry, 0, 0, EXTENT, EXTENT)) {
+                const anchors = getAnchors(
                     line,
                     symbolMinDistance,
                     textMaxAngle,
-                    shapedText,
+                    shapedTextOrientations[WritingMode.vertical] || shapedTextOrientations[WritingMode.horizontal],
                     shapedIcon,
                     glyphSize,
                     textMaxBoxScale,
                     this.overscaling,
                     EXTENT
                 );
-            } else {
-                line = pointsOrRings[0];
-                anchors = this.findPolygonAnchors(pointsOrRings);
-            }
-
-
-            // Here line is a list of points that is either the outer ring of a polygon or just a line
-
-            // For each potential label, create the placement features used to check for collisions, and the quads use for rendering.
-            for (let j = 0, len = anchors.length; j < len; j++) {
-                const anchor = anchors[j];
-
-                if (shapedText && isLine) {
-                    if (this.anchorIsTooClose(shapedText.text, textRepeatDistance, anchor)) {
-                        continue;
+                for (const anchor of anchors) {
+                    const shapedText = shapedTextOrientations[WritingMode.horizontal];
+                    if (!shapedText || !this.anchorIsTooClose(shapedText.text, textRepeatDistance, anchor)) {
+                        addSymbolInstance(line, anchor);
                     }
                 }
-
-                const inside = !(anchor.x < 0 || anchor.x > EXTENT || anchor.y < 0 || anchor.y > EXTENT);
-
-                if (avoidEdges && !inside) continue;
-
-                // Normally symbol layers are drawn across tile boundaries. Only symbols
-                // with their anchors within the tile boundaries are added to the buffers
-                // to prevent symbols from being drawn twice.
-                //
-                // Symbols in layers with overlap are sorted in the y direction so that
-                // symbols lower on the canvas are drawn on top of symbols near the top.
-                // To preserve this order across tile boundaries these symbols can't
-                // be drawn across tile boundaries. Instead they need to be included in
-                // the buffers for both tiles and clipped to tile boundaries at draw time.
-                const addToBuffers = inside || mayOverlap;
-                this.addSymbolInstance(anchor, line, shapedText, shapedIcon, this.layers[0],
-                    addToBuffers, this.symbolInstancesArray.length, this.collisionBoxArray, feature.index, feature.sourceLayerIndex, this.index,
-                    textBoxScale, textPadding, textAlongLine,
-                    iconBoxScale, iconPadding, iconAlongLine, {zoom: this.zoom}, feature.properties);
+            }
+        } else if (feature.type === 'Polygon') {
+            for (const polygon of classifyRings(feature.geometry, 0)) {
+                // 16 here represents 2 pixels
+                const poi = findPoleOfInaccessibility(polygon, 16);
+                addSymbolInstance(polygon[0], new Anchor(poi.x, poi.y, 0));
+            }
+        } else if (feature.type === 'LineString') {
+            // https://github.com/mapbox/mapbox-gl-js/issues/3808
+            for (const line of feature.geometry) {
+                addSymbolInstance(line, new Anchor(line[0].x, line[0].y, 0));
+            }
+        } else if (feature.type === 'Point') {
+            for (const points of feature.geometry) {
+                for (const point of points) {
+                    addSymbolInstance([point], new Anchor(point.x, point.y, 0));
+                }
             }
         }
-    }
-
-    findPolygonAnchors(polygonRings) {
-
-        const outerRing = polygonRings[0];
-        if (outerRing.length === 0) {
-            return [];
-        } else if (outerRing.length < 3 || !util.isClosedPolygon(outerRing)) {
-            return [ new Anchor(outerRing[0].x, outerRing[0].y, 0) ];
-        }
-
-        let anchors = null;
-        // 16 here represents 2 pixels
-        const poi = findPoleOfInaccessibility(polygonRings, 16);
-        anchors = [ new Anchor(poi.x, poi.y, 0) ];
-
-        return anchors;
     }
 
     anchorIsTooClose(text, repeatDistance, anchor) {
@@ -528,7 +502,7 @@ class SymbolBucket {
             if (hasText) {
                 collisionTile.insertCollisionFeature(textCollisionFeature, glyphScale, layout['text-ignore-placement']);
                 if (glyphScale <= maxScale) {
-                    this.addSymbols(this.arrays.glyph, symbolInstance.glyphQuadStartIndex, symbolInstance.glyphQuadEndIndex, glyphScale, layout['text-keep-upright'], textAlongLine, collisionTile.angle);
+                    this.addSymbols(this.arrays.glyph, symbolInstance.glyphQuadStartIndex, symbolInstance.glyphQuadEndIndex, glyphScale, layout['text-keep-upright'], textAlongLine, collisionTile.angle, symbolInstance.writingModes);
                 }
             }
 
@@ -544,7 +518,7 @@ class SymbolBucket {
         if (showCollisionBoxes) this.addToDebugBuffers(collisionTile);
     }
 
-    addSymbols(arrays, quadsStart, quadsEnd, scale, keepUpright, alongLine, placementAngle) {
+    addSymbols(arrays, quadsStart, quadsEnd, scale, keepUpright, alongLine, placementAngle, writingModes) {
         const elementArray = arrays.elementArray;
         const layoutVertexArray = arrays.layoutVertexArray;
 
@@ -555,9 +529,13 @@ class SymbolBucket {
 
             const symbol = this.symbolQuadsArray.get(k).SymbolQuad;
 
-            // drop upside down versions of glyphs
+            // drop incorrectly oriented glyphs
             const a = (symbol.anchorAngle + placementAngle + Math.PI) % (Math.PI * 2);
-            if (keepUpright && alongLine && (a <= Math.PI / 2 || a > Math.PI * 3 / 2)) continue;
+            if (writingModes & WritingMode.vertical) {
+                if (alongLine && symbol.writingMode === WritingMode.vertical) {
+                    if (keepUpright && alongLine && a <= (Math.PI * 5 / 4) || a > (Math.PI * 7 / 4)) continue;
+                } else if (keepUpright && alongLine && a <= (Math.PI * 3 / 4) || a > (Math.PI * 5 / 4)) continue;
+            } else if (keepUpright && alongLine && (a <= Math.PI / 2 || a > Math.PI * 3 / 2)) continue;
 
             const tl = symbol.tl,
                 tr = symbol.tr,
@@ -642,14 +620,17 @@ class SymbolBucket {
         }
     }
 
-    addSymbolInstance(anchor, line, shapedText, shapedIcon, layer, addToBuffers, index, collisionBoxArray, featureIndex, sourceLayerIndex, bucketIndex,
+    addSymbolInstance(anchor, line, shapedTextOrientations, shapedIcon, layer, addToBuffers, index, collisionBoxArray, featureIndex, sourceLayerIndex, bucketIndex,
         textBoxScale, textPadding, textAlongLine,
         iconBoxScale, iconPadding, iconAlongLine, globalProperties, featureProperties) {
 
-        let textCollisionFeature, iconCollisionFeature, glyphQuads, iconQuads;
-        if (shapedText) {
-            glyphQuads = addToBuffers ? getGlyphQuads(anchor, shapedText, textBoxScale, line, layer, textAlongLine) : [];
-            textCollisionFeature = new CollisionFeature(collisionBoxArray, line, anchor, featureIndex, sourceLayerIndex, bucketIndex, shapedText, textBoxScale, textPadding, textAlongLine, false);
+        let textCollisionFeature, iconCollisionFeature, iconQuads;
+        let glyphQuads = [];
+        for (const writingModeString in shapedTextOrientations) {
+            const writingMode = parseInt(writingModeString, 10);
+            if (!shapedTextOrientations[writingMode]) continue;
+            glyphQuads = glyphQuads.concat(addToBuffers ? getGlyphQuads(anchor, shapedTextOrientations[writingMode], textBoxScale, line, layer, textAlongLine, writingMode) : []);
+            textCollisionFeature = new CollisionFeature(collisionBoxArray, line, anchor, featureIndex, sourceLayerIndex, bucketIndex, shapedTextOrientations[writingMode], textBoxScale, textPadding, textAlongLine, false);
         }
 
         const glyphQuadStartIndex = this.symbolQuadsArray.length;
@@ -664,7 +645,7 @@ class SymbolBucket {
         const textBoxEndIndex = textCollisionFeature ? textCollisionFeature.boxEndIndex : this.collisionBoxArray.length;
 
         if (shapedIcon) {
-            iconQuads = addToBuffers ? getIconQuads(anchor, shapedIcon, iconBoxScale, line, layer, iconAlongLine, shapedText, globalProperties, featureProperties) : [];
+            iconQuads = addToBuffers ? getIconQuads(anchor, shapedIcon, iconBoxScale, line, layer, iconAlongLine, shapedTextOrientations[WritingMode.horizontal], globalProperties, featureProperties) : [];
             iconCollisionFeature = new CollisionFeature(collisionBoxArray, line, anchor, featureIndex, sourceLayerIndex, bucketIndex, shapedIcon, iconBoxScale, iconPadding, iconAlongLine, true);
         }
 
@@ -679,6 +660,11 @@ class SymbolBucket {
         if (iconQuadEndIndex > SymbolBucket.MAX_QUADS) util.warnOnce("Too many symbols being rendered in a tile. See https://github.com/mapbox/mapbox-gl-js/issues/2907");
         if (glyphQuadEndIndex > SymbolBucket.MAX_QUADS) util.warnOnce("Too many glyphs being rendered in a tile. See https://github.com/mapbox/mapbox-gl-js/issues/2907");
 
+        const writingModes = (
+            (shapedTextOrientations[WritingMode.vertical] ? WritingMode.vertical : 0) |
+            (shapedTextOrientations[WritingMode.horizontal] ? WritingMode.horizontal : 0)
+        );
+
         return this.symbolInstancesArray.emplaceBack(
             textBoxStartIndex,
             textBoxEndIndex,
@@ -690,7 +676,9 @@ class SymbolBucket {
             iconQuadEndIndex,
             anchor.x,
             anchor.y,
-            index);
+            index,
+            writingModes
+        );
     }
 
     addSymbolQuad(symbolQuad) {
@@ -717,7 +705,9 @@ class SymbolBucket {
             symbolQuad.glyphAngle,
             // scales
             symbolQuad.maxScale,
-            symbolQuad.minScale);
+            symbolQuad.minScale,
+            // writing mode
+            symbolQuad.writingMode);
     }
 }
 

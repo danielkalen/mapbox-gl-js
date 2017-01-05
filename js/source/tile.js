@@ -41,6 +41,15 @@ class Tile {
         this.state = 'loading';
     }
 
+    registerFadeDuration(animationLoop, duration) {
+        const fadeEndTime = duration + this.timeAdded;
+        if (fadeEndTime < Date.now()) return;
+        if (this.fadeEndTime && fadeEndTime < this.fadeEndTime) return;
+
+        this.fadeEndTime = fadeEndTime;
+        animationLoop.set(this.fadeEndTime - Date.now());
+    }
+
     /**
      * Given a data object with a 'buffers' property, load it into
      * this tile's elementGroups and buffers properties and set loaded
@@ -109,17 +118,21 @@ class Tile {
         for (const id in this.buckets) {
             this.buckets[id].destroy();
         }
+        this.buckets = {};
 
         this.collisionBoxArray = null;
         this.symbolQuadsArray = null;
         this.symbolInstancesArray = null;
         this.collisionTile = null;
         this.featureIndex = null;
-        this.buckets = null;
         this.state = 'unloaded';
     }
 
     redoPlacement(source) {
+        if (source.type !== 'vector' && source.type !== 'geojson') {
+            return;
+        }
+
         if (this.state !== 'loaded' || this.state === 'reloading') {
             this.redoWhenDone = true;
             return;
@@ -138,7 +151,7 @@ class Tile {
 
         function done(_, data) {
             this.reloadSymbolData(data, source.map.style);
-            source.fire('data', {tile: this, dataType: 'tile'});
+            source.fire('data', {tile: this, coord: this.coord, dataType: 'tile'});
 
             // HACK this is nescessary to fix https://github.com/mapbox/mapbox-gl-js/issues/2986
             if (source.map) source.map.painter.tileExtentVAO.vao = null;
@@ -152,7 +165,7 @@ class Tile {
     }
 
     getBucket(layer) {
-        return this.buckets && this.buckets[layer.ref || layer.id];
+        return this.buckets[layer.id];
     }
 
     querySourceFeatures(result, params) {
@@ -166,7 +179,7 @@ class Tile {
 
         if (!layer) return;
 
-        const filter = featureFilter(params.filter);
+        const filter = featureFilter(params && params.filter);
         const coord = { z: this.coord.z, x: this.coord.x, y: this.coord.y };
 
         for (let i = 0; i < layer.length; i++) {

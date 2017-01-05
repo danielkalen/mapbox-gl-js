@@ -1,82 +1,56 @@
 'use strict';
 
 const StyleLayer = require('./style_layer');
+const util = require('../util/util');
 const featureFilter = require('feature-filter');
+const groupByLayout = require('mapbox-gl-style-spec/lib/group_by_layout');
 
 class StyleLayerIndex {
-    constructor(layers) {
-        this.families = [];
-        if (layers) {
-            this.replace(layers);
+    constructor(layerConfigs) {
+        if (layerConfigs) {
+            this.replace(layerConfigs);
         }
     }
 
-    replace(layers) {
-        this.layers = {};
-        this.order = [];
-        this.update(layers);
+    replace(layerConfigs) {
+        this.symbolOrder = [];
+        for (const layerConfig of layerConfigs) {
+            if (layerConfig.type === 'symbol') {
+                this.symbolOrder.push(layerConfig.id);
+            }
+        }
+        this._layerConfigs = {};
+        this._layers = {};
+        this.update(layerConfigs, []);
     }
 
-    _updateLayer(layer) {
-        const refLayer = layer.ref && this.layers[layer.ref];
+    update(layerConfigs, removedIds, symbolOrder) {
+        for (const layerConfig of layerConfigs) {
+            this._layerConfigs[layerConfig.id] = layerConfig;
 
-        let styleLayer = this.layers[layer.id];
-        if (styleLayer) {
-            styleLayer.set(layer, refLayer);
-        } else {
-            styleLayer = this.layers[layer.id] = StyleLayer.create(layer, refLayer);
+            const layer = this._layers[layerConfig.id] = StyleLayer.create(layerConfig);
+            layer.updatePaintTransitions({}, {transition: false});
+            layer.filter = featureFilter(layer.filter);
         }
-
-        styleLayer.updatePaintTransitions({}, {transition: false});
-        styleLayer.filter = featureFilter(styleLayer.filter);
-    }
-
-    update(layers) {
-        for (const layer of layers) {
-            if (!this.layers[layer.id]) {
-                this.order.push(layer.id);
-            }
+        for (const id of removedIds) {
+            delete this._layerConfigs[id];
+            delete this._layers[id];
         }
-
-        // Update ref parents
-        for (const layer of layers) {
-            if (!layer.ref) this._updateLayer(layer);
-        }
-
-        // Update ref children
-        for (const layer of layers) {
-            if (layer.ref) this._updateLayer(layer);
-        }
-
-        this.families = [];
-        const byParent = {};
-
-        for (const id of this.order) {
-            const layer = this.layers[id];
-            const parent = layer.ref ? this.layers[layer.ref] : layer;
-
-            if (parent.layout && parent.layout.visibility === 'none') {
-                continue;
-            }
-
-            let family = byParent[parent.id];
-            if (!family) {
-                family = [];
-                this.families.push(family);
-                byParent[parent.id] = family;
-            }
-
-            if (layer.ref) {
-                family.push(layer);
-            } else {
-                family.unshift(layer);
-            }
+        if (symbolOrder) {
+            this.symbolOrder = symbolOrder;
         }
 
         this.familiesBySource = {};
 
-        for (const family of this.families) {
-            const layer = family[0];
+        const groups = groupByLayout(util.values(this._layerConfigs));
+
+        for (const layerConfigs of groups) {
+            const layers = layerConfigs.map((layerConfig) => this._layers[layerConfig.id]);
+
+            const layer = layers[0];
+            if (layer.layout && layer.layout.visibility === 'none') {
+                continue;
+            }
 
             const sourceId = layer.source || '';
             let sourceGroup = this.familiesBySource[sourceId];
@@ -90,7 +64,7 @@ class StyleLayerIndex {
                 sourceLayerFamilies = sourceGroup[sourceLayerId] = [];
             }
 
-            sourceLayerFamilies.push(family);
+            sourceLayerFamilies.push(layers);
         }
     }
 }

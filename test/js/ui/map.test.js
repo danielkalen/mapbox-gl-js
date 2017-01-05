@@ -9,6 +9,7 @@ const LngLat = require('../../../js/geo/lng_lat');
 const fixed = require('mapbox-gl-js-test/fixed');
 const fixedNum = fixed.Num;
 const fixedLngLat = fixed.LngLat;
+const fixedCoord = fixed.Coord;
 
 function createMap(options, callback) {
     const container = window.document.createElement('div');
@@ -56,6 +57,22 @@ test('Map', (t) => {
         t.ok(map.keyboard.isEnabled());
         t.ok(map.scrollZoom.isEnabled());
         t.ok(map.touchZoomRotate.isEnabled());
+        t.throws(() => {
+            new Map({
+                container: 'anElementIdWhichDoesNotExistInTheDocument'
+            });
+        }, new Error("Container 'anElementIdWhichDoesNotExistInTheDocument' not found"), 'throws on invalid map container id');
+
+        const largeContainer = window.document.createElement('div');
+        largeContainer.offsetWidth = 10000;
+        largeContainer.offsetHeight = 10000;
+        t.throws(() => {
+            new Map({
+                container: largeContainer
+            });
+        }, /Map canvas \(\d+x\d+\) is larger than half of gl.MAX_RENDERBUFFER_SIZE \(\d+\)/,
+        'throws on then map canvas is larger than allowed by gl.MAX_RENDERBUFFER_SIZE');
+
         t.end();
     });
 
@@ -133,20 +150,51 @@ test('Map', (t) => {
                 function recordEvent(event) { events.push(event.type); }
 
                 map.on('error', recordEvent);
-                map.on('source.load', recordEvent);
                 map.on('data', recordEvent);
                 map.on('dataloading', recordEvent);
 
                 map.style.fire('error');
-                map.style.fire('source.load');
                 map.style.fire('data');
                 map.style.fire('dataloading');
 
                 t.deepEqual(events, [
                     'error',
-                    'source.load',
                     'data',
                     'dataloading',
+                ]);
+
+                t.end();
+            });
+        });
+
+        t.test('fires *data and *dataloading events', (t) => {
+            createMap({}, (error, map) => {
+                t.error(error);
+
+                const events = [];
+                function recordEvent(event) { events.push(event.type); }
+
+                map.on('styledata', recordEvent);
+                map.on('styledataloading', recordEvent);
+                map.on('sourcedata', recordEvent);
+                map.on('sourcedataloading', recordEvent);
+                map.on('tiledata', recordEvent);
+                map.on('tiledataloading', recordEvent);
+
+                map.style.fire('data', {dataType: 'style'});
+                map.style.fire('dataloading', {dataType: 'style'});
+                map.style.fire('data', {dataType: 'source'});
+                map.style.fire('dataloading', {dataType: 'source'});
+                map.style.fire('data', {dataType: 'tile'});
+                map.style.fire('dataloading', {dataType: 'tile'});
+
+                t.deepEqual(events, [
+                    'styledata',
+                    'styledataloading',
+                    'sourcedata',
+                    'sourcedataloading',
+                    'tiledata',
+                    'tiledataloading'
                 ]);
 
                 t.end();
@@ -206,6 +254,16 @@ test('Map', (t) => {
                 t.equal(fixedNum(map.transform.pitch), 0);
                 t.end();
             });
+        });
+
+        t.test('passing null removes style', (t) => {
+            const map = createMap();
+            const style = map.style;
+            t.ok(style);
+            t.spy(style, '_remove');
+            map.setStyle(null);
+            t.equal(style._remove.callCount, 1);
+            t.end();
         });
 
         t.end();
@@ -275,6 +333,32 @@ test('Map', (t) => {
                 }));
                 t.end();
             });
+        });
+
+        t.test('creates a new Style if diff fails', (t) => {
+            const style = createStyle();
+            const map = createMap({ style: style });
+            t.stub(map.style, 'setState', () => {
+                throw new Error('Dummy error');
+            });
+
+            const previousStyle = map.style;
+            map.setStyle(style);
+            t.ok(map.style && map.style !== previousStyle);
+            t.end();
+        });
+
+        t.test('creates a new Style if diff option is false', (t) => {
+            const style = createStyle();
+            const map = createMap({ style: style });
+            t.stub(map.style, 'setState', () => {
+                t.fail();
+            });
+
+            const previousStyle = map.style;
+            map.setStyle(style, {diff: false});
+            t.ok(map.style && map.style !== previousStyle);
+            t.end();
         });
 
         t.end();
@@ -433,7 +517,7 @@ test('Map', (t) => {
         });
 
         function toFixed(bounds) {
-            const n = 10;
+            const n = 9;
             return [
                 [bounds[0][0].toFixed(n), bounds[0][1].toFixed(n)],
                 [bounds[1][0].toFixed(n), bounds[1][1].toFixed(n)]
@@ -456,6 +540,14 @@ test('Map', (t) => {
         map.setMinZoom(null);
         map.setZoom(1);
         t.equal(map.getZoom(), 1);
+        t.end();
+    });
+
+    t.test('#getMinZoom', (t) => {
+        const map = createMap({zoom: 0});
+        t.equal(map.getMinZoom(), 0, 'returns default value');
+        map.setMinZoom(10);
+        t.equal(map.getMinZoom(), 10, 'returns custom value');
         t.end();
     });
 
@@ -485,6 +577,14 @@ test('Map', (t) => {
         t.end();
     });
 
+    t.test('#getMaxZoom', (t) => {
+        const map = createMap({zoom: 0});
+        t.equal(map.getMaxZoom(), 20, 'returns default value');
+        map.setMaxZoom(10);
+        t.equal(map.getMaxZoom(), 10, 'returns custom value');
+        t.end();
+    });
+
     t.test('ignore maxZooms over minZoom', (t) => {
         const map = createMap({minZoom:5});
         t.throws(() => {
@@ -506,12 +606,28 @@ test('Map', (t) => {
     t.test('#addControl', (t) => {
         const map = createMap();
         const control = {
-            addTo: function(_) {
+            onAdd: function(_) {
                 t.equal(map, _, 'addTo() called with map');
+                t.end();
+                return window.document.createElement('div');
+            }
+        };
+        map.addControl(control);
+    });
+
+    t.test('#removeControl', (t) => {
+        const map = createMap();
+        const control = {
+            onAdd: function() {
+                return window.document.createElement('div');
+            },
+            onRemove: function(_) {
+                t.equal(map, _, 'onRemove() called with map');
                 t.end();
             }
         };
         map.addControl(control);
+        map.removeControl(control);
     });
 
     t.test('#addClass', (t) => {
@@ -555,7 +671,7 @@ test('Map', (t) => {
 
     t.test('#unproject', (t) => {
         const map = createMap();
-        t.deepEqual(map.unproject([100, 100]), { lng: 0, lat: 0 });
+        t.deepEqual(fixedLngLat(map.unproject([100, 100])), { lng: 0, lat: 0 });
         t.end();
     });
 
@@ -585,7 +701,7 @@ test('Map', (t) => {
                 const output = map.queryRenderedFeatures(map.project(new LngLat(0, 0)));
 
                 const args = map.style.queryRenderedFeatures.getCall(0).args;
-                t.deepEqual(args[0], [{ column: 0.5, row: 0.5, zoom: 0 }]); // query geometry
+                t.deepEqual(args[0].map(c => fixedCoord(c)), [{ column: 0.5, row: 0.5, zoom: 0 }]); // query geometry
                 t.deepEqual(args[1], {}); // params
                 t.deepEqual(args[2], 0); // bearing
                 t.deepEqual(args[3], 0); // zoom
@@ -634,8 +750,8 @@ test('Map', (t) => {
 
                 map.queryRenderedFeatures(map.project(new LngLat(360, 0)));
 
-                const coords = map.style.queryRenderedFeatures.getCall(0).args[0];
-                t.equal(parseFloat(coords[0].column.toFixed(4)), 1.5);
+                const coords = map.style.queryRenderedFeatures.getCall(0).args[0].map(c => fixedCoord(c));
+                t.equal(coords[0].column, 1.5);
                 t.equal(coords[0].row, 0.5);
                 t.equal(coords[0].zoom, 0);
 
@@ -674,50 +790,10 @@ test('Map', (t) => {
             map.on('style.load', () => {
                 map.style.dispatcher.broadcast = function(key, value) {
                     t.equal(key, 'updateLayers');
-                    t.deepEqual(value.map((layer) => { return layer.id; }), ['symbol']);
+                    t.deepEqual(value.layers.map((layer) => { return layer.id; }), ['symbol']);
                 };
 
                 map.setLayoutProperty('symbol', 'text-transform', 'lowercase');
-                map.style.update();
-                t.deepEqual(map.getLayoutProperty('symbol', 'text-transform'), 'lowercase');
-                t.end();
-            });
-        });
-
-        t.test('sets property on parent layer', (t) => {
-            const map = createMap({
-                style: {
-                    "version": 8,
-                    "sources": {
-                        "geojson": {
-                            "type": "geojson",
-                            "data": {
-                                "type": "FeatureCollection",
-                                "features": []
-                            }
-                        }
-                    },
-                    "layers": [{
-                        "id": "symbol",
-                        "type": "symbol",
-                        "source": "geojson",
-                        "layout": {
-                            "text-transform": "uppercase"
-                        }
-                    }, {
-                        "id": "symbol-ref",
-                        "ref": "symbol"
-                    }]
-                }
-            });
-
-            map.on('style.load', () => {
-                map.style.dispatcher.broadcast = function(key, value) {
-                    t.equal(key, 'updateLayers');
-                    t.deepEqual(value.map((layer) => { return layer.id; }), ['symbol']);
-                };
-
-                map.setLayoutProperty('symbol-ref', 'text-transform', 'lowercase');
                 map.style.update();
                 t.deepEqual(map.getLayoutProperty('symbol', 'text-transform'), 'lowercase');
                 t.end();
@@ -738,6 +814,24 @@ test('Map', (t) => {
             }, Error, /load/i);
 
             t.end();
+        });
+
+        t.test('fires an error if layer not found', (t) => {
+            const map = createMap({
+                style: {
+                    version: 8,
+                    sources: {},
+                    layers: []
+                }
+            });
+
+            map.on('style.load', () => {
+                map.style.on('error', ({ error }) => {
+                    t.match(error.message, /does not exist in the map\'s style and cannot be styled/);
+                    t.end();
+                });
+                map.setLayoutProperty('non-existant', 'text-transform', 'lowercase');
+            });
         });
 
         t.test('fires a data event', (t) => {
@@ -926,6 +1020,24 @@ test('Map', (t) => {
             }, Error, /load/i);
 
             t.end();
+        });
+
+        t.test('fires an error if layer not found', (t) => {
+            const map = createMap({
+                style: {
+                    version: 8,
+                    sources: {},
+                    layers: []
+                }
+            });
+
+            map.on('style.load', () => {
+                map.style.on('error', ({ error }) => {
+                    t.match(error.message, /does not exist in the map\'s style and cannot be styled/);
+                    t.end();
+                });
+                map.setPaintProperty('non-existant', 'background-color', 'red');
+            });
         });
 
         t.end();

@@ -11,21 +11,17 @@ const Evented = require('../util/evented');
 const TRANSITION_SUFFIX = '-transition';
 
 class StyleLayer extends Evented {
-    constructor(layer, refLayer) {
+    constructor(layer) {
         super();
-        this.set(layer, refLayer);
-    }
 
-    set(layer, refLayer) {
         this.id = layer.id;
-        this.ref = layer.ref;
         this.metadata = layer.metadata;
-        this.type = (refLayer || layer).type;
-        this.source = (refLayer || layer).source;
-        this.sourceLayer = (refLayer || layer)['source-layer'];
-        this.minzoom = (refLayer || layer).minzoom;
-        this.maxzoom = (refLayer || layer).maxzoom;
-        this.filter = (refLayer || layer).filter;
+        this.type = layer.type;
+        this.source = layer.source;
+        this.sourceLayer = layer['source-layer'];
+        this.minzoom = layer.minzoom;
+        this.maxzoom = layer.maxzoom;
+        this.filter = layer.filter;
 
         this.paint = {};
         this.layout = {};
@@ -54,12 +50,8 @@ class StyleLayer extends Evented {
         }
 
         // Resolve layout declarations
-        if (this.ref) {
-            this._layoutDeclarations = refLayer._layoutDeclarations;
-        } else {
-            for (layoutName in layer.layout) {
-                this.setLayoutProperty(layoutName, layer.layout[layoutName], options);
-            }
+        for (layoutName in layer.layout) {
+            this.setLayoutProperty(layoutName, layer.layout[layoutName], options);
         }
 
         // set initial layout/paint values
@@ -165,9 +157,9 @@ class StyleLayer extends Evented {
         }
     }
 
-    getPaintInterpolationT(name, zoom) {
+    getPaintInterpolationT(name, globalProperties) {
         const transition = this._paintTransitions[name];
-        return transition.declaration.calculateInterpolationT({ zoom: zoom });
+        return transition.declaration.calculateInterpolationT(globalProperties);
     }
 
     isPaintValueFeatureConstant(name) {
@@ -245,28 +237,22 @@ class StyleLayer extends Evented {
         }
     }
 
-    serialize(options) {
+    serialize() {
         const output = {
             'id': this.id,
-            'ref': this.ref,
+            'type': this.type,
+            'source': this.source,
+            'source-layer': this.sourceLayer,
             'metadata': this.metadata,
             'minzoom': this.minzoom,
-            'maxzoom': this.maxzoom
+            'maxzoom': this.maxzoom,
+            'filter': this.filter,
+            'layout': util.mapObject(this._layoutDeclarations, getDeclarationValue)
         };
 
         for (const klass in this._paintDeclarations) {
             const key = klass === '' ? 'paint' : `paint.${klass}`;
             output[key] = util.mapObject(this._paintDeclarations[klass], getDeclarationValue);
-        }
-
-        if (!this.ref || (options && options.includeRefProperties)) {
-            util.extend(output, {
-                'type': this.type,
-                'source': this.source,
-                'source-layer': this.sourceLayer,
-                'filter': this.filter,
-                'layout': util.mapObject(this._layoutDeclarations, getDeclarationValue)
-            });
         }
 
         return util.filterObject(output, (value, key) => {
@@ -339,9 +325,9 @@ const subclasses = {
     'symbol': require('./style_layer/symbol_style_layer')
 };
 
-StyleLayer.create = function(layer, refLayer) {
-    const LayerClass = subclasses[(refLayer || layer).type] || StyleLayer;
-    return new LayerClass(layer, refLayer);
+StyleLayer.create = function(layer) {
+    const LayerClass = subclasses[layer.type] || StyleLayer;
+    return new LayerClass(layer);
 };
 
 function getDeclarationValue(declaration) {

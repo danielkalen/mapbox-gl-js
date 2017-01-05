@@ -12,7 +12,8 @@ function drawBackground(painter, sourceCache, layer) {
     const image = layer.paint['background-pattern'];
     const opacity = layer.paint['background-opacity'];
 
-    if (painter.isOpaquePass !== (!image && color[3] === 1)) return;
+    const isOpaque = !image && color[3] === 1 && opacity === 1;
+    if (painter.isOpaquePass !== isOpaque) return;
 
     gl.disable(gl.STENCIL_TEST);
 
@@ -20,7 +21,7 @@ function drawBackground(painter, sourceCache, layer) {
 
     let program;
     if (image) {
-        program = painter.useProgram('fillPattern');
+        program = painter.useProgram('fillPattern', painter.basicFillProgramConfiguration);
         pattern.prepare(image, painter, program);
         painter.tileExtentPatternVAO.bind(gl, program, painter.tileExtentBuffer);
     } else {

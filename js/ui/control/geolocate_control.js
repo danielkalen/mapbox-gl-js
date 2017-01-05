@@ -1,52 +1,82 @@
 'use strict';
 
-const Control = require('./control');
-const browser = require('../../util/browser');
+const Evented = require('../../util/evented');
 const DOM = require('../../util/dom');
 const window = require('../../util/window');
+const util = require('../../util/util');
 
-const geoOptions = { enableHighAccuracy: false, timeout: 6000 /* 6sec */ };
+const defaultGeoPositionOptions = { enableHighAccuracy: false, timeout: 6000 /* 6sec */ };
+const className = 'mapboxgl-ctrl';
+
+let supportsGeolocation;
+
+function checkGeolocationSupport(callback) {
+    if (supportsGeolocation !== undefined) {
+        callback(supportsGeolocation);
+
+    } else if (window.navigator.permissions !== undefined) {
+        // navigator.permissions has incomplete browser support
+        // http://caniuse.com/#feat=permissions-api
+        // Test for the case where a browser disables Geolocation because of an
+        // insecure origin
+        window.navigator.permissions.query({ name: 'geolocation' }).then((p) => {
+            supportsGeolocation = p.state !== 'denied';
+            callback(supportsGeolocation);
+        });
+
+    } else {
+        supportsGeolocation = !!window.navigator.geolocation;
+        callback(supportsGeolocation);
+    }
+}
 
 /**
  * A `GeolocateControl` control provides a button that uses the browser's geolocation
  * API to locate the user on the map.
  *
+ * Not all browsers support geolocation,
+ * and some users may disable the feature. Geolocation support for modern
+ * browsers including Chrome requires sites to be served over HTTPS. If
+ * geolocation support is not available, the GeolocateControl will not
+ * be visible.
+ *
+ * @implements {IControl}
  * @param {Object} [options]
- * @param {string} [options.position='top-right'] A string indicating the control's position on the map. Options are `'top-right'`, `'top-left'`, `'bottom-right'`, and `'bottom-left'`.
+ * @param {Object} [options.positionOptions={enableHighAccuracy: false, timeout: 6000}] A [PositionOptions](https://developer.mozilla.org/en-US/docs/Web/API/PositionOptions) object.
+ * @param {Object} [options.watchPosition=false] If `true` the map will reposition each time the position of the device changes and the control becomes a toggle.
  * @example
- * map.addControl(new mapboxgl.GeolocateControl({position: 'top-left'})); // position is optional
+ * map.addControl(new mapboxgl.GeolocateControl({
+ *     positionOptions: {
+ *         enableHighAccuracy: true
+ *     }
+ * }));
  */
-class GeolocateControl extends Control {
+class GeolocateControl extends Evented {
 
     constructor(options) {
         super();
-        this._position = options && options.position || 'top-right';
+        this.options = options || {};
+        util.bindAll([
+            '_onSuccess',
+            '_onError',
+            '_finish',
+            '_setupUI'
+        ], this);
     }
 
     onAdd(map) {
-        const className = 'mapboxgl-ctrl';
-
-        const container = this._container = DOM.create('div', `${className}-group`, map.getContainer());
-        if (!browser.supportsGeolocation) return container;
-
-        this._container.addEventListener('contextmenu', (e) => e.preventDefault());
-
-        this._geolocateButton = DOM.create('button', (`${className}-icon ${className}-geolocate`), this._container);
-        this._geolocateButton.type = 'button';
-        this._geolocateButton.setAttribute('aria-label', 'Geolocate');
-        this._geolocateButton.addEventListener('click', this._onClickGeolocate.bind(this));
-        return container;
+        this._map = map;
+        this._container = DOM.create('div', `${className} ${className}-group`);
+        checkGeolocationSupport(this._setupUI);
+        return this._container;
     }
 
-    _onClickGeolocate() {
-        window.navigator.geolocation.getCurrentPosition(this._success.bind(this), this._error.bind(this), geoOptions);
-
-        // This timeout ensures that we still call finish() even if
-        // the user declines to share their location in Firefox
-        this._timeoutId = setTimeout(this._finish.bind(this), 10000 /* 10sec */);
+    onRemove() {
+        this._container.parentNode.removeChild(this._container);
+        this._map = undefined;
     }
 
-    _success(position) {
+    _onSuccess(position) {
         this._map.jumpTo({
             center: [position.coords.longitude, position.coords.latitude],
             zoom: 17,
@@ -58,7 +88,7 @@ class GeolocateControl extends Control {
         this._finish();
     }
 
-    _error(error) {
+    _onError(error) {
         this.fire('error', error);
         this._finish();
     }
@@ -66,6 +96,48 @@ class GeolocateControl extends Control {
     _finish() {
         if (this._timeoutId) { clearTimeout(this._timeoutId); }
         this._timeoutId = undefined;
+    }
+
+    _setupUI(supported) {
+        if (supported === false) return;
+        this._container.addEventListener('contextmenu',
+            e => e.preventDefault());
+        this._geolocateButton = DOM.create('button',
+            `${className}-icon ${className}-geolocate`,
+            this._container);
+        this._geolocateButton.type = 'button';
+        this._geolocateButton.setAttribute('aria-label', 'Geolocate');
+        if (this.options.watchPosition) this._geolocateButton.setAttribute('aria-pressed', false);
+        this._geolocateButton.addEventListener('click',
+            this._onClickGeolocate.bind(this));
+    }
+
+    _onClickGeolocate() {
+        const positionOptions = util.extend(defaultGeoPositionOptions, this.options && this.options.positionOptions || {});
+
+        // toggle watching the device location
+        if (this.options.watchPosition) {
+            if (this._geolocationWatchID !== undefined) {
+                // clear watchPosition
+                this._geolocateButton.classList.remove('watching');
+                this._geolocateButton.setAttribute('aria-pressed', false);
+                window.navigator.geolocation.clearWatch(this._geolocationWatchID);
+                this._geolocationWatchID = undefined;
+            } else {
+                // enable watchPosition
+                this._geolocateButton.classList.add('watching');
+                this._geolocateButton.setAttribute('aria-pressed', true);
+                this._geolocationWatchID = window.navigator.geolocation.watchPosition(
+                    this._onSuccess, this._onError, positionOptions);
+            }
+        } else {
+            window.navigator.geolocation.getCurrentPosition(
+                this._onSuccess, this._onError, positionOptions);
+
+            // This timeout ensures that we still call finish() even if
+            // the user declines to share their location in Firefox
+            this._timeoutId = setTimeout(this._finish, 10000 /* 10sec */);
+        }
     }
 }
 

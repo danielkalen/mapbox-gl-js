@@ -139,6 +139,7 @@ class Map extends Camera {
 
         if (typeof options.container === 'string') {
             this._container = window.document.getElementById(options.container);
+            if (!this._container) throw new Error(`Container '${options.container}' not found.`);
         } else {
             this._container = options.container;
         }
@@ -155,7 +156,9 @@ class Map extends Camera {
             '_contextLost',
             '_contextRestored',
             '_update',
-            '_render'
+            '_render',
+            '_onData',
+            '_onDataLoading'
         ], this);
 
         this._setupContainer();
@@ -193,7 +196,7 @@ class Map extends Camera {
         if (options.classes) this.setClasses(options.classes);
         if (options.style) this.setStyle(options.style);
 
-        if (options.attributionControl) this.addControl(new AttributionControl(options.attributionControl));
+        if (options.attributionControl) this.addControl(new AttributionControl());
 
         this.on('style.load', function() {
             if (this.transform.unmodified) {
@@ -202,24 +205,44 @@ class Map extends Camera {
             this.style.update(this._classes, {transition: false});
         });
 
-        this.on('data', function(event) {
-            if (event.dataType === 'style') {
-                this._update(true);
-            } else {
-                this._update();
-            }
-        });
+        this.on('data', this._onData);
+        this.on('dataloading', this._onDataLoading);
     }
 
     /**
-     * Adds a [`Control`](#Control) to the map, calling `control.addTo(this)`.
+     * Adds a [`IControl`](#IControl) to the map, calling `control.onAdd(this)`.
      *
-     * @param {Control} control The [`Control`](#Control) to add.
+     * @param {IControl} control The [`IControl`](#IControl) to add.
+     * @param {string} [position] position on the map to which the control will be added.
+     * Valid values are `'top-left'`, `'top-right'`, `'bottom-left'`, and `'bottom-right'`. Defaults to `'top-right'`.
      * @returns {Map} `this`
      * @see [Display map navigation controls](https://www.mapbox.com/mapbox-gl-js/example/navigation/)
      */
-    addControl(control) {
-        control.addTo(this);
+    addControl(control, position) {
+        if (position === undefined && control.getDefaultPosition) {
+            position = control.getDefaultPosition();
+        }
+        if (position === undefined) {
+            position = 'top-right';
+        }
+        const controlElement = control.onAdd(this);
+        const positionContainer = this._controlPositions[position];
+        if (position.indexOf('bottom') !== -1) {
+            positionContainer.insertBefore(controlElement, positionContainer.firstChild);
+        } else {
+            positionContainer.appendChild(controlElement);
+        }
+        return this;
+    }
+
+    /**
+     * Removes the control from the map.
+     *
+     * @param {IControl} control The [`IControl`](#IControl) to remove.
+     * @returns {Map} `this`
+     */
+    removeControl(control) {
+        control.onRemove(this);
         return this;
     }
 
@@ -398,11 +421,18 @@ class Map extends Camera {
     }
 
     /**
+     * Returns the map's minimum allowable zoom level.
+     *
+     * @returns {number} minZoom
+     */
+    getMinZoom() { return this.transform.minZoom; }
+
+    /**
      * Sets or clears the map's maximum zoom level.
      * If the map's current zoom level is higher than the new maximum,
      * the map will zoom to the new maximum.
      *
-     * @param {?number} maxZoom The maximum zoom level to set (0-20).
+     * @param {?number} maxZoom The maximum zoom level to set.
      *   If `null` or `undefined` is provided, the function removes the current maximum zoom (sets it to 20).
      * @returns {Map} `this`
      */
@@ -410,7 +440,7 @@ class Map extends Camera {
 
         maxZoom = maxZoom === null || maxZoom === undefined ? defaultMaxZoom : maxZoom;
 
-        if (maxZoom >= this.transform.minZoom && maxZoom <= defaultMaxZoom) {
+        if (maxZoom >= this.transform.minZoom) {
             this.transform.maxZoom = maxZoom;
             this._update();
 
@@ -418,8 +448,16 @@ class Map extends Camera {
 
             return this;
 
-        } else throw new Error(`maxZoom must be between the current minZoom and ${defaultMaxZoom}, inclusive`);
+        } else throw new Error(`maxZoom must be greater than the current minZoom`);
     }
+
+    /**
+     * Returns the map's maximum allowable zoom level.
+     *
+     * @returns {number} maxZoom
+     */
+    getMaxZoom() { return this.transform.maxZoom; }
+
     /**
      * Returns a [`Point`](#Point) representing pixel coordinates, relative to the map's `container`,
      * that correspond to the specified geographical location.
@@ -575,7 +613,7 @@ class Map extends Camera {
      * representing features within the specified vector tile or GeoJSON source that satisfy the query parameters.
      *
      * @param {string} sourceID The ID of the vector tile or GeoJSON source to query.
-     * @param {Object} parameters
+     * @param {Object} [parameters]
      * @param {string} [parameters.sourceLayer] The name of the vector tile layer to query. *For vector tile
      *   sources, this parameter is required.* For GeoJSON sources, it is ignored.
      * @param {Array} [parameters.filter] A [filter](https://www.mapbox.com/mapbox-gl-style-spec/#types-filter)
@@ -600,23 +638,41 @@ class Map extends Camera {
      * @see [Filter features within map view](https://www.mapbox.com/mapbox-gl-js/example/filter-features-within-map-view/)
      * @see [Highlight features containing similar data](https://www.mapbox.com/mapbox-gl-js/example/query-similar-features/)
      */
-    querySourceFeatures(sourceID, params) {
-        return this.style.querySourceFeatures(sourceID, params);
+    querySourceFeatures(sourceID, parameters) {
+        return this.style.querySourceFeatures(sourceID, parameters);
     }
 
     /**
-     * Replaces the map's Mapbox style object with a new value.
+     * Updates the map's Mapbox style object with a new value.  If the given
+     * value is style JSON object, compares it against the the map's current
+     * state and perform only the changes necessary to make the map style match
+     * the desired state.
      *
      * @param {Object|string} style A JSON object conforming to the schema described in the
      *   [Mapbox Style Specification](https://mapbox.com/mapbox-gl-style-spec/), or a URL to such JSON.
+     * @param {Object} [options]
+     * @param {boolean} [options.diff=true] If false, force a 'full' update, removing the current style
+     *   and adding building the given one instead of attempting a diff-based update.
      * @returns {Map} `this`
      * @see [Change a map's style](https://www.mapbox.com/mapbox-gl-js/example/setstyle/)
      */
-    setStyle(style) {
+    setStyle(style, options) {
+        const shouldTryDiff = (!options || options.diff !== false) && this.style && style &&
+            !(style instanceof Style) && typeof style !== 'string';
+        if (shouldTryDiff) {
+            try {
+                if (this.style.setState(style)) {
+                    this._update(true);
+                }
+                return this;
+            } catch (e) {
+                util.warnOnce(`Unable to perform style diff: ${e.message || e.error || e}.  Rebuilding the style from scratch.`);
+            }
+        }
+
         if (this.style) {
             this.style.setEventedParent(null);
             this.style._remove();
-
             this.off('rotate', this.style._redoPlacement);
             this.off('pitch', this.style._redoPlacement);
         }
@@ -728,10 +784,21 @@ class Map extends Camera {
     }
 
     /**
-     * Removes a layer from the map's style.
+     * Moves a layer to a different z-position.
      *
-     * Also removes any layers which refer to the specified layer via a
-     * [`ref` property](https://www.mapbox.com/mapbox-gl-style-spec/#layer-ref).
+     * @param {string} id The ID of the layer to move.
+     * @param {string} [beforeId] The ID of an existing layer to insert the new layer before.
+     *   If this argument is omitted, the layer will be appended to the end of the layers array.
+     * @returns {Map} `this`
+     */
+    moveLayer(id, beforeId) {
+        this.style.moveLayer(id, beforeId);
+        this._update(true);
+        return this;
+    }
+
+    /**
+     * Removes a layer from the map's style.
      *
      * @param {string} id The ID of the layer to remove.
      * @throws {Error} if no layer with the specified `id` exists.
@@ -946,14 +1013,15 @@ class Map extends Camera {
         this._canvas.addEventListener('webglcontextlost', this._contextLost, false);
         this._canvas.addEventListener('webglcontextrestored', this._contextRestored, false);
         this._canvas.setAttribute('tabindex', 0);
+        this._canvas.setAttribute('aria-label', 'Map');
 
         const dimensions = this._containerDimensions();
         this._resizeCanvas(dimensions[0], dimensions[1]);
 
         const controlContainer = this._controlContainer = DOM.create('div', 'mapboxgl-control-container', container);
-        const corners = this._controlCorners = {};
-        ['top-left', 'top-right', 'bottom-left', 'bottom-right'].forEach((pos) => {
-            corners[pos] = DOM.create('div', `mapboxgl-ctrl-${pos}`, controlContainer);
+        const positions = this._controlPositions = {};
+        ['top-left', 'top-right', 'bottom-left', 'bottom-right'].forEach((positionName) => {
+            positions[positionName] = DOM.create('div', `mapboxgl-ctrl-${positionName}`, controlContainer);
         });
     }
 
@@ -981,6 +1049,13 @@ class Map extends Camera {
         if (!gl) {
             this.fire('error', { error: new Error('Failed to initialize WebGL') });
             return;
+        }
+
+        const MAX_RENDERBUFFER_SIZE = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) / 2;
+        if (this._canvas.width > MAX_RENDERBUFFER_SIZE ||
+            this._canvas.height > MAX_RENDERBUFFER_SIZE) {
+            throw new Error(`Map canvas (${this._canvas.width}x${this._canvas.height}) ` +
+            `is larger than half of gl.MAX_RENDERBUFFER_SIZE (${MAX_RENDERBUFFER_SIZE})`);
         }
 
         this.painter = new Painter(gl, this.transform);
@@ -1075,9 +1150,8 @@ class Map extends Camera {
         }
 
         this.painter.render(this.style, {
-            debug: this.showTileBoundaries,
+            showTileBoundaries: this.showTileBoundaries,
             showOverdrawInspector: this._showOverdrawInspector,
-            vertices: this.vertices,
             rotating: this.rotating,
             zooming: this.zooming
         });
@@ -1206,6 +1280,15 @@ class Map extends Camera {
     // show vertices
     get vertices() { return !!this._vertices; }
     set vertices(value) { this._vertices = value; this._update(); }
+
+    _onData(event) {
+        this._update(event.dataType === 'style');
+        this.fire(`${event.dataType}data`, event);
+    }
+
+    _onDataLoading(event) {
+        this.fire(`${event.dataType}dataloading`, event);
+    }
 }
 
 module.exports = Map;
@@ -1215,6 +1298,93 @@ function removeNode(node) {
         node.parentNode.removeChild(node);
     }
 }
+
+/**
+ * Interface for interactive controls added to the map. This is an
+ * specification for implementers to model: it is not
+ * an exported method or class.
+ *
+ * Controls must implement `onAdd` and `onRemove`, and must own an
+ * element, which is often a `div` element. To use Mapbox GL JS's
+ * default control styling, add the `mapboxgl-ctrl` class to your control's
+ * node.
+ *
+ * @interface IControl
+ * @example
+ * // Control implemented as ES6 class
+ * class HelloWorldControl {
+ *     onAdd(map) {
+ *         this._map = map;
+ *         this._container = document.createElement('div');
+ *         this._container.className = 'mapboxgl-ctrl';
+ *         this._container.textContent = 'Hello, world';
+ *         return this._container;
+ *     }
+ *
+ *     onRemove() {
+ *         this._container.parentNode.removeChild(this._container);
+ *         this._map = undefined;
+ *     }
+ * }
+ *
+ * // Control implemented as ES5 prototypical class
+ * function HelloWorldControl() { }
+ *
+ * HelloWorldControl.prototype.onAdd = function(map) {
+ *     this._map = map;
+ *     this._container = document.createElement('div');
+ *     this._container.className = 'mapboxgl-ctrl';
+ *     this._container.textContent = 'Hello, world';
+ *     return this._container;
+ * };
+ *
+ * HelloWorldControl.prototype.onRemove() {
+ *      this._container.parentNode.removeChild(this._container);
+ *      this._map = undefined;
+ * };
+ */
+
+/**
+ * Register a control on the map and give it a chance to register event listeners
+ * and resources. This method is called by {@link Map#addControl}
+ * internally.
+ *
+ * @function
+ * @memberof IControl
+ * @instance
+ * @name onAdd
+ * @param {Map} map the Map this control will be added to
+ * @returns {HTMLElement} The control's container element. This should
+ * be created by the control and returned by onAdd without being attached
+ * to the DOM: the map will insert the control's element into the DOM
+ * as necessary.
+ */
+
+/**
+ * Unregister a control on the map and give it a chance to detach event listeners
+ * and resources. This method is called by {@link Map#removeControl}
+ * internally.
+ *
+ * @function
+ * @memberof IControl
+ * @instance
+ * @name onRemove
+ * @param {Map} map the Map this control will be removed from
+ * @returns {undefined} there is no required return value for this method
+ */
+
+/**
+ * Optionally provide a default position for this control. If this method
+ * is implemented and {@link Map#addControl} is called without the `position`
+ * parameter, the value returned by getDefaultPosition will be used as the
+ * control's position.
+ *
+ * @function
+ * @memberof IControl
+ * @instance
+ * @name getDefaultPosition
+ * @returns {string} a control position, one of the values valid in addControl.
+ */
 
 /**
  * A [`LngLat`](#LngLat) object or an array of two numbers representing longitude and latitude.
@@ -1440,8 +1610,8 @@ function removeNode(node) {
   */
 
 /**
- * Fired when any map data (style, source, tile, etc) loads or changes. See
- * [`MapDataEvent`](#MapDataEvent) for more information.
+ * Fired when any map data loads or changes. See [`MapDataEvent`](#MapDataEvent)
+ * for more information.
  *
  * @event data
  * @memberof Map
@@ -1449,16 +1619,82 @@ function removeNode(node) {
  * @property {MapDataEvent} data
  */
 
+/**
+ * Fired when the map's style loads or changes. See
+ * [`MapDataEvent`](#MapDataEvent) for more information.
+ *
+ * @event styledata
+ * @memberof Map
+ * @instance
+ * @property {MapDataEvent} data
+ */
+
+/**
+ * Fired when one of the map's sources loads or changes. This event is not fired
+ * if a tile belonging to a source loads or changes (that is handled by
+ * `tiledata`). See [`MapDataEvent`](#MapDataEvent) for more information.
+ *
+ * @event sourcedata
+ * @memberof Map
+ * @instance
+ * @property {MapDataEvent} data
+ */
+
  /**
-  * Fired when any map data (style, source, tile, etc) begins loading or
-  * changing asyncronously. All `dataloading` events are followed by a `data`
-  * or `error` event. See [`MapDataEvent`](#MapDataEvent) for more information.
+  * Fired when one of the map's sources' tiles loads or changes. See
+  * [`MapDataEvent`](#MapDataEvent) for more information.
   *
-  * @event dataloading
+  * @event tiledata
   * @memberof Map
   * @instance
   * @property {MapDataEvent} data
   */
+
+/**
+ * Fired when any map data (style, source, tile, etc) begins loading or
+ * changing asyncronously. All `dataloading` events are followed by a `data`
+ * or `error` event. See [`MapDataEvent`](#MapDataEvent) for more information.
+ *
+ * @event dataloading
+ * @memberof Map
+ * @instance
+ * @property {MapDataEvent} data
+ */
+
+/**
+ * Fired when the map's style begins loading or changing asyncronously.
+ * All `styledataloading` events are followed by a `styledata`
+ * or `error` event. See [`MapDataEvent`](#MapDataEvent) for more information.
+ *
+ * @event styledataloading
+ * @memberof Map
+ * @instance
+ * @property {MapDataEvent} data
+ */
+
+/**
+ * Fired when one of the map's sources begins loading or changing asyncronously.
+ * This event is not fired if a tile belonging to a source begins loading or
+ * changing (that is handled by `tiledataloading`). All `sourcedataloading`
+ * events are followed by a `sourcedata` or `error` event. See
+ * [`MapDataEvent`](#MapDataEvent) for more information.
+ *
+ * @event sourcedataloading
+ * @memberof Map
+ * @instance
+ * @property {MapDataEvent} data
+ */
+
+/**
+ * Fired when one of the map's sources' tiles begins loading or changing
+ * asyncronously. All `tiledataloading` events are followed by a `tiledata`
+ * or `error` event. See [`MapDataEvent`](#MapDataEvent) for more information.
+ *
+ * @event tiledataloading
+ * @memberof Map
+ * @instance
+ * @property {MapDataEvent} data
+ */
 
  /**
   * A `MapDataEvent` object is emitted with the [`Map#data`](#Map.event:data)
@@ -1471,7 +1707,10 @@ function removeNode(node) {
   *
   * @typedef {Object} MapDataEvent
   * @property {string} type The event type.
-  * @property {string} dataType The type of data that has changed. One of `'source'`, `'style'`, or `'tile'`.
+  * @property {string} dataType The type of data that has changed. One of `'source'`, `'style'`.
+  * @property {boolean} [isSourceLoaded] True if the event has a `dataType` of `source` and the source has no outstanding network requests.
+  * @property {Object} [source] The [style spec representation of the source](https://www.mapbox.com/mapbox-gl-style-spec/#sources) if the event has a `dataType` of `source`.
+  * @property {Coordinate} [coord] The coordinate of the tile if the event has a `dataType` of `tile`.
   */
 
  /**

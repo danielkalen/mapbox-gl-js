@@ -45,13 +45,10 @@ test('transform', (t) => {
         t.end();
     });
 
-    t.test('panBy', (t) => {
+    t.test('does not throw on bad center', (t) => {
         const transform = new Transform();
         transform.resize(500, 500);
-        transform.latRange = undefined;
-        t.deepEqual(transform.center, { lng: 0, lat: 0 });
-        t.equal(transform.panBy(new Point(10, 10)), undefined);
-        t.deepEqual(fixedLngLat(transform.center), fixedLngLat({ lng: 7.03125, lat: -7.01366792756663 }));
+        transform.center = {lng: 50, lat: -90};
         t.end();
     });
 
@@ -115,6 +112,9 @@ test('transform', (t) => {
 
         const transform = new Transform();
         transform.resize(200, 200);
+
+        // make slightly off center so that sort order is not subject to precision issues
+        transform.center = { lng: -0.01, lat: 0.01 };
 
         transform.zoom = 0;
         t.deepEqual(transform.coveringTiles(options), []);
