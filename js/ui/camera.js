@@ -314,17 +314,18 @@ class Camera extends Evented {
      * @see [Fit a map to a bounding box](https://www.mapbox.com/mapbox-gl-js/example/fitbounds/)
      */
     fitBounds(bounds, options, eventData) {
-
+        const tr = this.transform;
         options = util.extend({
             padding: 0,
             offset: [0, 0],
             maxZoom: this.getMaxZoom()
         }, options);
 
+        if (options.padding * 2 >= tr.width || options.padding * 2 >= tr.height)
+        options.padding = Math.min(tr.height, tr.width) / 4
         bounds = LngLatBounds.convert(bounds);
 
         const offset = Point.convert(options.offset),
-            tr = this.transform,
             nw = tr.project(bounds.getNorthWest()),
             se = tr.project(bounds.getSouthEast()),
             size = se.sub(nw),
