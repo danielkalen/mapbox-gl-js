@@ -1,12 +1,18 @@
 'use strict';
 
-const ajax =  require('../js/util/ajax');
-const sinon = require('sinon');
+const ajax =  require('../src/util/ajax');
 const request = require('request');
 const PNG = require('pngjs').PNG;
-const Map = require('../js/ui/map');
-const window = require('../js/util/window');
-const browser = require('../js/util/browser');
+const Map = require('../src/ui/map');
+const window = require('../src/util/window');
+const browser = require('../src/util/browser');
+const rtlTextPlugin = require('../src/source/rtl_text_plugin');
+const rtlText = require('@mapbox/mapbox-gl-rtl-text');
+const fs = require('fs');
+const path = require('path');
+
+rtlTextPlugin['applyArabicShaping'] = rtlText.applyArabicShaping;
+rtlTextPlugin['processBidirectionalText'] = rtlText.processBidirectionalText;
 
 module.exports = function(style, options, _callback) {
     let wasCallbackCalled = false;
@@ -20,8 +26,8 @@ module.exports = function(style, options, _callback) {
     window.devicePixelRatio = options.pixelRatio;
 
     const container = window.document.createElement('div');
-    container.offsetHeight = options.height;
-    container.offsetWidth = options.width;
+    Object.defineProperty(container, 'offsetWidth', {value: options.width});
+    Object.defineProperty(container, 'offsetHeight', {value: options.height});
 
     const map = new Map({
         container: container,
@@ -36,15 +42,19 @@ module.exports = function(style, options, _callback) {
     map.repaint = true;
 
     if (options.debug) map.showTileBoundaries = true;
-    if (options.collisionDebug) map.showCollisionBoxes = true;
     if (options.showOverdrawInspector) map.showOverdrawInspector = true;
 
     const gl = map.painter.gl;
 
     map.once('load', () => {
+        if (options.collisionDebug) {
+            map.showCollisionBoxes = true;
+            options.operations = [["wait"]];
+        }
         applyOperations(map, options.operations, () => {
-            const w = options.width * window.devicePixelRatio;
-            const h = options.height * window.devicePixelRatio;
+            const viewport = gl.getParameter(gl.VIEWPORT);
+            const w = viewport[2];
+            const h = viewport[3];
 
             const pixels = new Uint8Array(w * h * 4);
             gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
@@ -63,7 +73,7 @@ module.exports = function(style, options, _callback) {
             }
 
             const results = options.queryGeometry ?
-                map.queryRenderedFeatures(options.queryGeometry, options) :
+                map.queryRenderedFeatures(options.queryGeometry, options.queryOptions || {}) :
                 [];
 
             map.remove();
@@ -95,6 +105,11 @@ function applyOperations(map, operations, callback) {
         };
         wait();
 
+    } else if (operation[0] === 'addImage') {
+        const {data, width, height} = PNG.sync.read(fs.readFileSync(path.join(__dirname, './integration', operation[2])));
+        map.addImage(operation[1], {width, height, data: new Uint8Array(data)}, operation[3] || {});
+        applyOperations(map, operations.slice(1), callback);
+
     } else {
         map[operation[0]].apply(map, operation.slice(1));
         applyOperations(map, operations.slice(1), callback);
@@ -109,7 +124,7 @@ function cached(data, callback) {
     });
 }
 
-sinon.stub(ajax, 'getJSON', (url, callback) => {
+ajax.getJSON = function({ url }, callback) {
     if (cache[url]) return cached(cache[url], callback);
     return request(url, (error, response, body) => {
         if (!error && response.statusCode >= 200 && response.statusCode < 300) {
@@ -125,23 +140,23 @@ sinon.stub(ajax, 'getJSON', (url, callback) => {
             callback(error || new Error(response.statusCode));
         }
     });
-});
+};
 
-sinon.stub(ajax, 'getArrayBuffer', (url, callback) => {
+ajax.getArrayBuffer = function({ url }, callback) {
     if (cache[url]) return cached(cache[url], callback);
-    return request({url: url, encoding: null}, (error, response, body) => {
+    return request({ url, encoding: null }, (error, response, body) => {
         if (!error && response.statusCode >= 200 && response.statusCode < 300) {
-            cache[url] = body;
-            callback(null, body);
+            cache[url] = {data: body};
+            callback(null, {data: body});
         } else {
             callback(error || new Error(response.statusCode));
         }
     });
-});
+};
 
-sinon.stub(ajax, 'getImage', (url, callback) => {
+ajax.getImage = function({ url }, callback) {
     if (cache[url]) return cached(cache[url], callback);
-    return request({url: url, encoding: null}, (error, response, body) => {
+    return request({ url, encoding: null }, (error, response, body) => {
         if (!error && response.statusCode >= 200 && response.statusCode < 300) {
             new PNG().parse(body, (err, png) => {
                 if (err) return callback(err);
@@ -149,19 +164,19 @@ sinon.stub(ajax, 'getImage', (url, callback) => {
                 callback(null, png);
             });
         } else {
-            callback(error || new Error(response.statusCode));
+            callback(error || {status: response.statusCode});
         }
     });
-});
+};
 
-sinon.stub(browser, 'getImageData', (img) => {
-    return new Uint8Array(img.data);
-});
+browser.getImageData = function({width, height, data}) {
+    return {width, height, data: new Uint8Array(data)};
+};
 
 // Hack: since node doesn't have any good video codec modules, just grab a png with
 // the first frame and fake the video API.
-sinon.stub(ajax, 'getVideo', (urls, callback) => {
-    return request({url: urls[0], encoding: null}, (error, response, body) => {
+ajax.getVideo = function(urls, callback) {
+    return request({ url: urls[0], encoding: null }, (error, response, body) => {
         if (!error && response.statusCode >= 200 && response.statusCode < 300) {
             new PNG().parse(body, (err, png) => {
                 if (err) return callback(err);
@@ -178,4 +193,4 @@ sinon.stub(ajax, 'getVideo', (urls, callback) => {
             callback(error || new Error(response.statusCode));
         }
     });
-});
+};
