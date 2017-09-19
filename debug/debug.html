@@ -45,14 +45,18 @@ map.addControl(new mapboxgl.GeolocateControl({
     positionOptions: {
         enableHighAccuracy: true
     },
-    watchPosition: true
+    trackUserLocation: true,
+    showUserLocation: true,
+    fitBoundsOptions: {
+        maxZoom: 20
+    }
 }));
 map.addControl(new mapboxgl.ScaleControl());
 
 map.on('load', function() {
     map.addSource('geojson', {
         "type": "geojson",
-        "data": "/node_modules/mapbox-gl-test-suite/data/linestring.geojson"
+        "data": "/test/integration/data/linestring.geojson"
     });
     map.addLayer({
         "id": "route",

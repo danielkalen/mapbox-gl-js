@@ -1,20 +1,20 @@
 'use strict';
 
-const VT = require('vector-tile');
+const VT = require('@mapbox/vector-tile');
 const Protobuf = require('pbf');
 const assert = require('assert');
 
-const WorkerTile = require('../../js/source/worker_tile');
-const ajax = require('../../js/util/ajax');
-const Style = require('../../js/style/style');
-const StyleLayerIndex = require('../../js/style/style_layer_index');
-const util = require('../../js/util/util');
-const Evented = require('../../js/util/evented');
-const config = require('../../js/util/config');
+const WorkerTile = require('../../src/source/worker_tile');
+const ajax = require('../../src/util/ajax');
+const Style = require('../../src/style/style');
+const StyleLayerIndex = require('../../src/style/style_layer_index');
+const util = require('../../src/util/util');
+const Evented = require('../../src/util/evented');
+const config = require('../../src/util/config');
 const coordinates = require('../lib/coordinates');
 const formatNumber = require('../lib/format_number');
 const accessToken = require('../lib/access_token');
-const deref = require('mapbox-gl-style-spec/lib/deref');
+const deref = require('../../src/style-spec/deref');
 
 const SAMPLE_COUNT = 10;
 
@@ -24,7 +24,7 @@ module.exports = function run() {
     const evented = new Evented();
 
     const stylesheetURL = `https://api.mapbox.com/styles/v1/mapbox/streets-v9?access_token=${accessToken}`;
-    ajax.getJSON(stylesheetURL, (err, stylesheet) => {
+    ajax.getJSON({ url: stylesheetURL }, (err, stylesheet) => {
         if (err) return evented.fire('error', {error: err});
 
         evented.fire('log', {
@@ -82,6 +82,12 @@ module.exports = function run() {
     return evented;
 };
 
+class StubMap extends Evented {
+    _transformRequest(url) {
+        return { url };
+    }
+}
+
 function preloadAssets(stylesheet, callback) {
     const assets = {
         glyphs: {},
@@ -89,7 +95,7 @@ function preloadAssets(stylesheet, callback) {
         tiles: {}
     };
 
-    const style = new Style(stylesheet);
+    const style = new Style(stylesheet, new StubMap());
 
     style.on('style.load', () => {
         function getGlyphs(params, callback) {
@@ -99,21 +105,21 @@ function preloadAssets(stylesheet, callback) {
             });
         }
 
-        function getIcons(params, callback) {
-            style.getIcons(0, params, (err, icons) => {
+        function getImages(params, callback) {
+            style.getImages(0, params, (err, icons) => {
                 assets.icons[JSON.stringify(params)] = icons;
                 callback(err, icons);
             });
         }
 
         function getTile(url, callback) {
-            ajax.getArrayBuffer(url, (err, response) => {
-                assets.tiles[url] = response;
-                callback(err, response);
+            ajax.getArrayBuffer({ url }, (err, response) => {
+                assets.tiles[url] = response.data;
+                callback(err, response.data);
             });
         }
 
-        runSample(stylesheet, getGlyphs, getIcons, getTile, (err) => {
+        runSample(stylesheet, getGlyphs, getImages, getTile, (err) => {
             style._remove();
             callback(err, assets);
         });
@@ -125,7 +131,7 @@ function preloadAssets(stylesheet, callback) {
 
 }
 
-function runSample(stylesheet, getGlyphs, getIcons, getTile, callback) {
+function runSample(stylesheet, getGlyphs, getImages, getTile, callback) {
     const layerIndex = new StyleLayerIndex(deref(stylesheet.layers));
 
     const timeStart = performance.now();
@@ -148,8 +154,8 @@ function runSample(stylesheet, getGlyphs, getIcons, getTile, callback) {
         const actor = {
             send: function(action, params, sendCallback) {
                 setTimeout(() => {
-                    if (action === 'getIcons') {
-                        getIcons(params, sendCallback);
+                    if (action === 'getImages') {
+                        getImages(params, sendCallback);
                     } else if (action === 'getGlyphs') {
                         getGlyphs(params, sendCallback);
                     } else assert(false);

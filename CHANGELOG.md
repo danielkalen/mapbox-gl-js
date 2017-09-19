@@ -1,3 +1,369 @@
+## 0.40.1 (September 18, 2017)
+
+### :bug: Bug fixes
+- Fix bug causing flicker when zooming in on overzoomed tiles [#5295](https://github.com/mapbox/mapbox-gl-js/pull/5295)
+- Remove erroneous call to Tile#redoPlacement for zoom-only or low pitch camera changes [#5284](https://github.com/mapbox/mapbox-gl-js/pull/5284)
+- Fix bug where `CanvasSource` coordinates were flipped and improve performance for non-animated `CanvasSource`s [#5303](https://github.com/mapbox/mapbox-gl-js/pull/5303)
+- Fix bug causing map not to render on some cases on Internet Explorer 11 [#5321](https://github.com/mapbox/mapbox-gl-js/pull/5321)
+- Remove upper limit on `fill-extrusion-height` property [#5320](https://github.com/mapbox/mapbox-gl-js/pull/5320)
+
+## 0.40.0 (September 13, 2017)
+
+### :warning: Breaking changes
+- `Map#addImage` now requires the image as an `HTMLImageElement`, `ImageData`, or object with `width`, `height`, and
+  `data` properties with the same format as `ImageData`. It no longer accepts a raw `ArrayBufferView` in the second
+  argument and `width` and `height` options in the third argument.
+- `canvas` sources now require a `contextType` option specifying the drawing context associated with the source canvas. [#5155](https://github.com/mapbox/mapbox-gl-js/pull/5155)
+
+
+### :sparkles: Features and improvements
+- Correct rendering for multiple `fill-extrusion` layers on the same map [#5101](https://github.com/mapbox/mapbox-gl-js/pull/5101)
+- Add an `icon-anchor` property to symbol layers [#5183](https://github.com/mapbox/mapbox-gl-js/pull/5183)
+- Add a per-map `transformRequest` option, allowing users to provide a callback that transforms resource request URLs [#5021](https://github.com/mapbox/mapbox-gl-js/pull/5021)
+- Add data-driven styling support for
+  - `text-max-width` [#5067](https://github.com/mapbox/mapbox-gl-js/pull/5067)
+  - `text-letter-spacing` [#5071](https://github.com/mapbox/mapbox-gl-js/pull/5071)
+  - `line-join` [#5020](https://github.com/mapbox/mapbox-gl-js/pull/5020)
+- Add support for SDF icons in `Map#addImage()` [#5181](https://github.com/mapbox/mapbox-gl-js/pull/5181)
+- Added nautical miles unit to ScaleControl [#5238](https://github.com/mapbox/mapbox-gl-js/pull/5238) (h/t @fmairesse)
+- Eliminate the map-wide limit on the number of glyphs and sprites that may be used in a style [#141](https://github.com/mapbox/mapbox-gl-js/issues/141). (Fixed by [#5190](https://github.com/mapbox/mapbox-gl-js/pull/5190), see also [mapbox-gl-native#9213](https://github.com/mapbox/mapbox-gl-native/pull/9213)
+- Numerous performance optimizations (including [#5108](https://github.com/mapbox/mapbox-gl-js/pull/5108) h/t @pirxpilot)
+
+
+### :bug: Bug fixes
+- Add missing documentation for mouseenter, mouseover, mouseleave events [#4772](https://github.com/mapbox/mapbox-gl-js/issues/4772)
+- Add missing documentation for `Marker#getElement()` method [#5242](https://github.com/mapbox/mapbox-gl-js/pull/5242)
+- Fix bug wherein removing canvas source with animate=true leaves map in render loop [#5097](https://github.com/mapbox/mapbox-gl-js/issues/5097)
+- Fix fullscreen detection on Firefox [#5272](https://github.com/mapbox/mapbox-gl-js/pull/5272)
+- Fix z-fighting on overlapping fills within the same layer [#3320](https://github.com/mapbox/mapbox-gl-js/issues/3320)
+- Fix handling of fractional values for `layer.minzoom` [#2929](https://github.com/mapbox/mapbox-gl-js/issues/2929)
+- Clarify coordinate ordering in documentation for `center` option [#5042](https://github.com/mapbox/mapbox-gl-js/pull/5042) (h/t @karthikb351)
+- Fix output of stop functions where two stops have the same input value [#5020](https://github.com/mapbox/mapbox-gl-js/pull/5020) (h/t @edpop )
+- Fix bug wherein using `Map#addLayer()`  with an inline source would mutate its input [#4040](https://github.com/mapbox/mapbox-gl-js/issues/4040)
+- Fix invalid css keyframes selector [#5075](https://github.com/mapbox/mapbox-gl-js/pull/5075) (h/t @aar0nr)
+- Fix GPU-specific bug wherein canvas sources caused an error [#4262](https://github.com/mapbox/mapbox-gl-js/issues/4262)
+- Fix a race condition in symbol layer handling that caused sporadic uncaught errors [#5185](https://github.com/mapbox/mapbox-gl-js/pull/5185)
+- Fix bug causing line labels to render incorrectly on overzoomed tiles [#5120](https://github.com/mapbox/mapbox-gl-js/pull/5120)
+- Fix bug wherein `NavigationControl` triggered mouse events unexpectedly [#5148](https://github.com/mapbox/mapbox-gl-js/issues/5148)
+- Fix bug wherein clicking on the `NavigationControl` compass caused an error in IE 11 [#4784](https://github.com/mapbox/mapbox-gl-js/issues/4784)
+- Remove dependency on GPL-3-licensed `fast-stable-stringify` module [#5152](https://github.com/mapbox/mapbox-gl-js/issues/5152)
+- Fix bug wherein layer-specific an event listener produced an error after its target layer was removed from the map [#5145](https://github.com/mapbox/mapbox-gl-js/issues/5145)
+- Fix `Marker#togglePopup()` failing to return the marker instance [#5116](https://github.com/mapbox/mapbox-gl-js/issues/5116)
+- Fix bug wherein a marker's position failed to adapt to the marker element's size changing [#5133](https://github.com/mapbox/mapbox-gl-js/issues/5133)
+- Fix rendering bug affecting Broadcom GPUs [#5073](https://github.com/mapbox/mapbox-gl-js/pull/5073)
+
+### :wrench: Development workflow improvements
+- Add (and now require) Flow type annotations throughout the majority of the codebase.
+- Migrate to CircleCI 2.0 [#4939](https://github.com/mapbox/mapbox-gl-js/pull/4939)
+
+
+## 0.39.1 (July 24, 2017)
+
+### :bug: Bug fixes
+- Fix packaging issue in 0.39.0 [#5025](https://github.com/mapbox/mapbox-gl-js/issues/5025)
+- Correctly evaluate enum-based identity functions [#5023](https://github.com/mapbox/mapbox-gl-js/issues/5023)
+
+## 0.39.0 (July 21, 2017)
+
+### :warning: Breaking changes
+
+- `GeolocateControl` breaking changes #4479
+  * The option `watchPosition` has been replaced with `trackUserLocation`
+  * The camera operation has changed from `jumpTo` (not animated) to `fitBounds` (animated). An effect of this is the map pitch is no longer reset, although the bearing is still reset to 0.
+  * The accuracy of the geolocation provided by the device is used to set the view (previously it was fixed at zoom level 17). The `maxZoom` can be controlled via the new `fitBoundsOptions` option (defaults to 15).
+- Anchor `Marker`s at their center by default #5019 @andrewharvey
+- Increase `significantRotateThreshold` for the `TouchZoomRotateHandler` #4971, @dagjomar
+
+### :sparkles: Features and improvements
+- Improve performance of updating GeoJSON sources #4069, @ezheidtmann
+- Improve rendering speed of extrusion layers #4818
+- Improve line label legibility in pitched views #4781
+- Improve line label legibility on curved lines #4853
+- Add user location tracking capability to `GeolocateControl` #4479, @andrewharvey
+  * New option `showUserLocation` to draw a "dot" as a `Marker` on the map at the user's location
+  * An active lock and background state are introduced with `trackUserLocation`. When in active lock the camera will update to follow the user location, however if the camera is changed by the API or UI then the control will enter the background state where it won't update the camera to follow the user location.
+  * New option `fitBoundsOptions` to control the camera operation
+  * New `trackuserlocationstart` and `trackuserlocationend` events
+  * New `LngLat.toBounds` method to extend a point location by a given radius to a `LngLatBounds` object
+- Include main CSS file in `package.json` #4809, @tomscholz
+- Add property function (data-driven styling) support for `line-width` #4773
+- Add property function (data-driven styling) support for `text-anchor` #4997
+- Add property function (data-driven styling) support for `text-justify` #5000
+- Add `maxTileCacheSize` option #4778, @jczaplew
+- Add new `icon-pitch-alignment` and `circle-pitch-alignment` properties #4869 #4871
+- Add `Map#getMaxBounds` method #4890, @andrewharvey @lamuertepeluda
+- Add option (`localIdeographFontFamily`) to use TinySDF to avoid loading expensive CJK glyphs #4895
+- If `config.API_URL` includes a path prepend it to the request URL #4995
+- Bump `supercluster` version to expose `cluster_id` property on clustered sources #5002
+
+### :bug: Bug fixes
+- Do not display `FullscreenControl` on unsupported devices #4838, @stepankuzmin
+- Fix yarn build on Windows machines #4887
+- Prevent potential memory leaks by dispatching `loadData` to the same worker every time #4877
+- Fix bug preventing the rtlTextPlugin from loading before the initial style `load` #4870
+- Fix bug causing runtime-stying to not take effect in some situations #4893
+- Prevent requests of vertical glyphs for labels that can't be verticalized #4720
+- Fix character detection for Zanabazar Square #4940
+- Fix `LogoControl` logic to update correctly, and hide the `<div>` instead of removing it from the DOM when it is not needed #4842
+- Fix `GeoJSONSource#serialize` to include all options
+- Fix error handling in `GlyphSource#getSimpleGlyphs`#4992
+- Fix bug causing `setStyle` to reload raster tiles #4852
+- Fix bug causing symbol layers not to render on devices with non-integer device pixel ratios #4989
+- Fix bug where `Map#queryRenderedFeatures` would error when returning no results #4993
+- Fix bug where `Map#areTilesLoaded` would always be false on `sourcedata` events for reloading tiles #4987
+- Fix bug causing categorical property functions to error on non-ascending order stops #4996
+
+### :hammer_and_wrench: Development workflow changes
+- Use flow to type much of the code base #4629 #4903 #4909 #4910 #4911 #4913 #4915 #4918 #4932 #4933 #4948 #4949 #4955 #4966 #4967 #4973 :muscle: @jfirebaugh @vicapow
+- Use style specification to generate flow type #4958
+- Explicitly list which files to publish in `package.json` #4819  @tomscholz
+- Move render test ignores to a separate file #4977
+- Add code of conduct #5015 :sparkling_heart:
+
+## 0.38.0 (June 9, 2017)
+
+#### New features :sparkles:
+
+- Attenuate label size scaling with distance, improving readability of pitched maps [#4547](https://github.com/mapbox/mapbox-gl-js/pull/4547)
+
+#### Bug fixes :beetle:
+
+- Skip rendering for patterned layers when pattern is missing [#4687](https://github.com/mapbox/mapbox-gl-js/pull/4687)
+- Fix bug with map failing to rerender after `webglcontextlost` event [#4725](https://github.com/mapbox/mapbox-gl-js/pull/4725) @cdawi
+- Clamp zoom level in `flyTo` to within the map's specified min- and maxzoom to prevent undefined behavior [#4726](https://github.com/mapbox/mapbox-gl-js/pull/4726) @ IvanSanchez
+- Fix wordmark rendering in IE [#4741](https://github.com/mapbox/mapbox-gl-js/pull/4741)
+- Fix slight pixelwise symbol rendering bugs caused by incorrect sprite calculations [#4737](https://github.com/mapbox/mapbox-gl-js/pull/4737)
+- Prevent exceptions thrown by certain `flyTo` calls [#4761](https://github.com/mapbox/mapbox-gl-js/pull/4761)
+- Fix "Improve this map" link [#4685](https://github.com/mapbox/mapbox-gl-js/pull/4685)
+- Tweak `queryRenderedSymbols` logic to better account for pitch scaling [#4792](https://github.com/mapbox/mapbox-gl-js/pull/4792)
+- Fix for symbol layers sometimes failing to render, most frequently in Safari [#4795](https://github.com/mapbox/mapbox-gl-js/pull/4795)
+- Apply `text-keep-upright` after `text-offset` to keep labels upright when intended [#4779](https://github.com/mapbox/mapbox-gl-js/pull/4779) **[Potentially breaking :warning: but considered a bugfix]**
+- Prevent exceptions thrown by empty GeoJSON tiles [4803](https://github.com/mapbox/mapbox-gl-js/pull/4803)
+
+#### Accessibility improvements :sound:
+
+- Add `aria-label` to popup close button [#4799](https://github.com/mapbox/mapbox-gl-js/pull/4799) @andrewharvey
+
+#### Development workflow + testing improvements :wrench:
+
+- Fix equality assertion bug in tests [#4731](https://github.com/mapbox/mapbox-gl-js/pull/4731) @IvanSanchez
+- Benchmark results page improvements [#4746](https://github.com/mapbox/mapbox-gl-js/pull/4746)
+- Require node version >=6.4.0, enabling the use of more ES6 features [#4752](https://github.com/mapbox/mapbox-gl-js/pull/4752)
+- Document missing `pitchWithRotate` option [#4800](https://github.com/mapbox/mapbox-gl-js/pull/4800) @simast
+- Move Github-specific Markdown files into subdirectory [#4806](https://github.com/mapbox/mapbox-gl-js/pull/4806) @tomscholz
+
+## 0.37.0 (May 2nd, 2017)
+
+#### :warning: Breaking changes
+
+- Removed `LngLat#wrapToBestWorld`
+
+#### New features :rocket:
+
+- Improve popup/marker positioning #4577
+- Add `Map#isStyleLoaded` and `Map#areTilesLoaded` events #4321
+- Support offline sprites using `file:` protocol #4649 @oscarfonts
+
+#### Bug fixes :bug:
+
+- Fix fullscreen control in Firefox #4666
+- Fix rendering artifacts that caused tile boundaries to be visible in some cases #4636
+- Fix default calculation for categorical zoom-and-property functions #4657
+- Fix scaling of images on retina screens #4645
+- Rendering error when a transparent image is added via `Map#addImage` #4644
+- Fix an issue with rendering lines with duplicate points #4634
+- Fix error when switching from data-driven styles to a constant paint value #4611
+- Add check to make sure invalid bounds on tilejson don't error out #4641
+
+#### Development workflow improvements :computer:
+
+- Add flowtype interfaces and definitions @vicapow
+- Add stylelinting to ensure `mapboxgl-` prefix on all classes #4584 @asantos3026
+
+## 0.36.0 (April 19, 2017)
+
+#### New features :sparkles:
+
+- Replace LogoControl logo with the new Mapbox logo #4598
+
+#### Bug fixes :bug:
+
+- Fix bug with the BoxZoomHandler that made it glitchy if it is enabled after the DragPanHandler #4528
+- Fix undefined behavior in `fill_outline` shaders #4600
+- Fix `Camera#easeTo` interpolation on pitched maps #4540
+- Choose property function interpolation method by the `property`'s type #4614
+
+#### Development workflow improvements :nerd_face:
+
+- Fix crash on missing `style.json` in integration tests
+- `gl-style-composite` is now executable in line with the other tools @andrewharvey #4595
+- `gl-style-composite` utility now throws an error if a name conflict would occur between layers @andrewharvey #4595
+
+## 0.35.1 (April 12, 2017)
+
+#### Bug fixes :bug:
+
+- Add `.json` extension to style-spec `require` statements for webpack compatibility #4563 @orangemug
+- Fix documentation type for `Map#fitBounde` #4569 @andrewharvey
+- Fix bug causing {Image,Video,Canvas}Source to throw exception if latitude is outside of +/-85.05113 #4574
+- Fix bug causing overzoomed raster tiles to disappear from map #4567
+- Fix bug causing queryRenderedFeatures to crash on polygon features that have an `id` field. #4581
+
+## 0.35.0 (April 7, 2017)
+
+#### New features :rocket:
+- Use anisotropic filtering to improve rendering of raster tiles on pitched maps #1064
+- Add `pitchstart` and `pitchend` events #2449
+- Add an optional `layers` parameter to `Map#on` #1002
+- Add data-driven styling support for `text-offset` #4495
+- Add data-driven styling support for `text-rotate` #3516
+- Add data-driven styling support for `icon-image` #4304
+- Add data-driven styling support for `{text,icon}-size` #4455
+
+#### Bug fixes :bug:
+- Suppress error messages in JS console due to missing tiles #1800
+- Fix bug wherein `GeoJSONSource#setData()` could cause unnecessary DOM updates #4447
+- Fix bug wherein `Map#flyTo` did not respect the `renderWorldCopies` setting #4449
+- Fix regression in browserify support # 4453
+- Fix bug causing poor touch event behavior on mobile devices #4259
+- Fix bug wherein duplicate stops in property functions could cause an infinite loop #4498
+- Respect image height/width in `addImage` api #4531
+- Fix bug preventing correct behavior of `shift+zoom` #3334
+- Fix bug preventing image source from rendering when coordinate area is too large #4550
+- Show image source on horizontally wrapped worlds #4555
+- Fix bug in the handling of `refreshedExpiredTiles` option #4549
+- Support the TileJSON `bounds` property #1775
+
+#### Development workflow improvements :computer:
+- Upgrade flow to 0.42.0 (#4500)
+
+
+## 0.34.0 (March 17, 2017)
+
+#### New features :rocket:
+- Add `Map#addImage` and `Map#removeImage` API to allow adding icon images at runtime #4404
+- Simplify non-browserify bundler usage by making the distribution build the main entrypoint #4423
+
+#### Bug fixes :bug:
+- Fix issue where coincident start/end points of LineStrings were incorrectly rendered as joined #4413
+- Fix bug causing `queryRenderedFeatures` to fail in cases where both multiple sources and data-driven paint properties were present #4417
+- Fix bug where tile request errors caused `map.loaded()` to incorrectly return `false` #4425
+
+#### Testing improvements :white_check_mark:
+- Improve test coverage across several core modules #4432 #4431 #4422 #4244 :bowing_man:
+
+## 0.33.1 (March 10, 2017)
+
+#### Bug fixes :bug:
+- Prevent Mapbox logo from being added to the map more than once #4386
+- Add `type='button'` to `FullscreenControl` to prevent button from acting as a form submit #4397
+- Fix issue where map would continue to rotate if `Ctrl` key is released before the click during a `DragRotate` event #4389
+- Remove double `options.easing` description from the `Map#fitBounds` documentation #4402
+
+
+## 0.33.0 (March 8, 2017)
+
+#### :warning: Breaking changes
+- Automatically add Mapbox wordmark when required by Mapbox TOS #3933
+- Increase default `maxZoom` from 20 to 22 #4333
+- Deprecate `tiledata` and `tiledataloading` events in favor of `sourcedata` and `sourcedataloading`. #4347
+- `mapboxgl.util` is no longer exported #1408
+- `"type": "categorical"` is now required for all categorical functions. Previously, some forms of "implicitly" categorical functions worked, and others did not. #3717
+
+#### :white_check_mark: New features
+- Add property functions support for most symbol paint properties #4074, #4186, #4226
+- Add ability to specify default property value for undefined or invalid property values used in property functions. #4175
+- Improve `Map#fitBounds` to accept different values for top, bottom, left, and right `padding` #3890
+- Add a `FullscreenControl` for displaying a fullscreen map #3977
+
+#### :beetle: Bug fixes
+- Fix validation error on categorical zoom-and-property functions #4220
+- Fix bug causing expired resources to be re-requested causing an infinite loop #4255
+- Fix problem where `MapDataEvent#isSourceLoaded` always returned false #4254
+- Resolve an issue where tiles in the source cache were prematurely deleted, resulting in tiles flickering when zooming in and out and  #4311
+- Make sure `MapEventData` is passed through on calls `Map#flyTo` #4342
+- Fix incorrect returned values for `Map#isMoving` #4350
+- Fix categorical functions not allowing boolean stop domain values #4195
+- Fix piecewise-constant functions to allow non-integer zoom levels. #4196
+- Fix issues with `$id` in filters #4236 #4237
+- Fix a race condition with polygon centroid algorithm causing tiles not to load in some cases. #4273
+- Throw a meaningful error when giving non-array `layers` parameter to `queryRenderedFeatures` #4331
+- Throw a meaningful error when supplying invalid `minZoom` and `maxZoom` values #4324
+- Fix a memory leak when using the RTL Text plugin #4248
+
+#### Dev workflow changes
+- Merged the [Mapbox GL style specification](https://github.com/mapbox/mapbox-gl-style-spec) repo to this one (now under `src/style-spec` and `test/unit/style-spec`).
+
+## 0.32.1 (Jan 26, 2017)
+
+#### Bug Fixes
+
+ - Fix bug causing [`mapbox-gl-rtl-text` plugin](https://github.com/mapbox/mapbox-gl-rtl-text) to not work #4055
+
+## 0.32.0 (Jan 26, 2017)
+
+#### Deprecation Notices
+
+- [Style classes](https://www.mapbox.com/mapbox-gl-style-spec/#layer-paint.*) are deprecated and will be removed in an upcoming release of Mapbox GL JS.
+
+#### New Features
+
+ - Add `Map#isSourceLoaded` method #4033
+ - Automatically reload tiles based on their `Expires` and `Cache-Control` HTTP headers #3944
+ - Add `around=center` option to `scrollZoom` and `touchZoomRotate` interaction handlers #3876
+ - Add support for [`mapbox-gl-rtl-text` plugin](https://github.com/mapbox/mapbox-gl-rtl-text) to support right-to-left scripts #3758
+ - Add `canvas` source type #3765
+ - Add `Map#isMoving` method #2792
+
+#### Bug Fixes
+
+ - Fix bug causing garbled text on zoom #3962
+ - Fix bug causing crash in Firefox and Mobile Safari when rendering a large map #4037
+ - Fix bug causing raster tiles to flicker during zoom #2467
+ - Fix bug causing exception when unsetting and resetting fill-outline-color #3657
+ - Fix memory leak when removing raster sources #3951
+ - Fix bug causing exception when when zooming in / out on empty GeoJSON tile #3985
+ - Fix line join artifacts at very sharp angles #4008
+
+## 0.31.0 (Jan 10 2017)
+
+#### New Features
+
+- Add `renderWorldCopies` option to the `Map` constructor to give users control over whether multiple worlds are rendered in a map #3885
+
+#### Bug Fixes
+
+- Fix performance regression triggered when `Map` pitch or bearing is changed #3938
+- Fix null pointer exception caused by trying to clear an `undefined` source #3903
+
+#### Miscellaneous
+
+- Incorporate integration tests formerly at [`mapbox-gl-test-suite`](https://github.com/mapbox/mapbox-gl-test-suite) into this repository #3834
+
+## 0.30.0 (Jan 5 2017)
+
+#### New Features
+
+ - Fire an error when map canvas is larger than allowed by `gl.MAX_RENDERBUFFER_SIZE` #2893
+ - Improve error messages when referencing a nonexistent layer id #2597
+ - Fire an error when layer uses a `geojson` source and specifies a `source-layer` #3896
+ - Add inline source declaration syntax #3857
+ - Improve line breaking behavior #3887
+
+#### Performance Improvements
+
+ - Improve `Map#setStyle` performance in some cases #3853
+
+#### Bug Fixes
+
+ - Fix unexpected popup positioning when some offsets are unspecified #3367
+ - Fix incorrect interpolation in functions #3838
+ - Fix incorrect opacity when multiple backgrounds are rendered #3819
+ - Fix exception thrown when instantiating geolocation control in Safari #3844
+ - Fix exception thrown when setting `showTileBoundaries` with no sources #3849
+ - Fix incorrect rendering of transparent parts of raster layers in some cases #3723
+ - Fix non-terminating render loop when zooming in in some cases #3399
+
 ## 0.29.0 (December 20 2016)
 
 #### New Features
