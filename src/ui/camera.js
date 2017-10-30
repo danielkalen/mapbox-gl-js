@@ -360,6 +360,7 @@ class Camera extends Evented {
      * @see [Fit a map to a bounding box](https://www.mapbox.com/mapbox-gl-js/example/fitbounds/)
      */
     fitBounds(bounds: LngLatBoundsLike, options?: AnimationOptions & CameraOptions, eventData?: Object) {
+        const tr = this.transform;
         options = util.extend({
             padding: {
                 top: 0,
