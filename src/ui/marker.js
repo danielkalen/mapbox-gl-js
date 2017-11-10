@@ -182,7 +182,7 @@ function genUpdateFn(_this) {
             // because rouding the coordinates at every `move` event causes stuttered zooming
             // we only round them when _update is called with `moveend` or when its called with
             // no arguments (when the Marker is initialized or Marker#setLngLat is invoked).
-            if (!e || e.type === "moveend") _this._pos = _this._pos.round();
+            // if (!e || e.type === "moveend") _this._pos = _this._pos.round();
             DOM.setTransform(_this._element, `translate(-50%, -50%) translate(${_this._pos.x}px, ${_this._pos.y}px)`);
         }});
     };
